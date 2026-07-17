@@ -1239,7 +1239,7 @@ function generateReceiptWindow(order) {
           ${logoHtml}
           <div class="restaurant-name">${restaurantName}</div>
           <div class="restaurant-tagline">${tagline}</div>
-          <div class="invoice-title">Tax Invoice</div>
+          <div class="invoice-title">${gstEnabled ? 'Tax Invoice' : 'Bill'}</div>
         </div>
         
         <div class="meta-grid">
@@ -1257,7 +1257,7 @@ function generateReceiptWindow(order) {
           </div>
           <div class="meta-item">
             <span class="label">Customer</span>
-            <span class="value">${order.customerName || 'Guest'}</span>
+            <span class="value">${order.customerName || 'Guest'}${order.customerPhone ? `<br><span style="font-size:0.75rem;color:#6b7280;font-weight:normal">📞 ${order.customerPhone}</span>` : ''}</span>
           </div>
         </div>
         
