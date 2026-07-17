@@ -2653,6 +2653,17 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   height: 100%;
   object-fit: cover;
 }
+.qr-card.qr-design-modern .qr-card-restaurant-name {
+  font-family: var(--font-head);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #495057;
+  margin-top: 8px;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: center;
+}
 .qr-card.qr-design-modern .qr-card-heading {
   font-family: var(--font-head);
   font-size: 1.35rem;

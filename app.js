@@ -2150,6 +2150,7 @@ function generateTableQRCodes() {
           <div class="qr-card-logo-container">
             ${logoHtml}
           </div>
+          <div class="qr-card-restaurant-name">${restaurantName}</div>
           <div class="qr-card-heading">Today's Menu</div>
           <div class="qr-card-qr-wrapper">
             <img src="${qrApiUrl}" alt="QR Code Table ${t}" loading="lazy" crossorigin="anonymous">
@@ -2349,6 +2350,16 @@ function getQRPrintStyles(design) {
     .print-design-modern .print-card-logo-container span {
       font-size: 24px;
     }
+    .print-design-modern .print-card-restaurant-name {
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #495057;
+      margin-top: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: center;
+    }
     .print-design-modern .print-card-heading {
       font-family: 'Outfit', sans-serif;
       font-size: 20px;
@@ -2510,6 +2521,7 @@ function buildPrintCardsHTML(tableNumbers) {
           <div class="print-card-logo-container">
             ${logoHtml}
           </div>
+          <div class="print-card-restaurant-name">${restaurantName}</div>
           <div class="print-card-heading">Today's Menu</div>
           <div class="print-card-qr">
             <img src="${qrApiUrl}" alt="QR Table ${t}" crossorigin="anonymous">
