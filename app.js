@@ -72,6 +72,10 @@ function _buildParams(action, args) {
       return args[0] || {};
     case 'validateUserSession':
       return { phone: args[0] };
+    case 'getActiveOrder':
+      return { phone: args[0] };
+    case 'updateExistingOrder':
+      return { orderId: args[0], ...args[1] };
     case 'adminLogin':
       return { password: args[0] };
     case 'getOrderStatus':
@@ -464,6 +468,45 @@ async function submitOrder(){
   }
   const table=$('checkout-table').value;
   if(!S.cart.length)return showToast('Cart is empty','error');
+  
+  showLoader('Checking order status...');
+  try {
+    const activeRes = await callServer('getActiveOrder', S.user.phone);
+    hideLoader();
+    
+    if (activeRes.success && activeRes.data) {
+      const activeOrder = activeRes.data;
+      const status = activeOrder.status;
+      
+      if (status === 'Received' || status === 'Preparing') {
+        showCustomModal(
+          '🔔 Active Order in Progress',
+          `You already have an active order <strong>${activeOrder.orderId}</strong>. Would you like to update your active order with these new items? You will only pay the difference amount.`,
+          [
+            { text: '🔄 Update Active Order', class: 'btn-primary', onclick: `handleUpdateExistingOrder('${activeOrder.orderId}')` },
+            { text: '📍 Track Active Order', class: 'btn-secondary', onclick: `closeCustomModal(); navigateTo('tracking'); startTracking('${activeOrder.orderId}')` },
+            { text: '❌ Cancel', class: 'btn-ghost', onclick: 'closeCustomModal()' }
+          ]
+        );
+      } else {
+        showCustomModal(
+          '🍽️ Order is Ready!',
+          `Your active order <strong>${activeOrder.orderId}</strong> is already prepared/ready. You cannot add more items to it now. Please ask staff to complete/bill this order before placing a new one.`,
+          [
+            { text: '📍 Track Active Order', class: 'btn-primary', onclick: `closeCustomModal(); navigateTo('tracking'); startTracking('${activeOrder.orderId}')` },
+            { text: '❌ Close', class: 'btn-ghost', onclick: 'closeCustomModal()' }
+          ]
+        );
+      }
+      return;
+    }
+  } catch (e) {
+    hideLoader();
+    console.error('Failed to pre-check active order:', e);
+    showToast('Connection issue, please try again.', 'error');
+    return;
+  }
+  
   showLoader('Placing order...');
   const data={tableNumber:table,customerName:S.user.name,customerPhone:S.user.phone,items:S.cart.map(c=>({id:c.id,name:c.name + (c.portion ? ' (' + c.portion + ')' : ''),qty:c.qty,price:c.price})),specialInstructions:$('checkout-notes')?$('checkout-notes').value:''};
   try{
@@ -641,12 +684,24 @@ function updateTrackingUI(data){
         '</div>';
     } else {
       // Payment Pending
-      paymentPromptEl.innerHTML = 
-        '<div class="payment-prompt-card glass mt-4" style="padding:16px; border: 1px solid var(--primary); text-align: center; animation: pulse 2s infinite;">' +
-          '<div style="font-size: 1.3rem; margin-bottom: 8px;">⏳ Payment Required</div>' +
-          '<p style="font-size: 0.85rem; color: var(--text2); margin-bottom: 12px;">Please complete the payment of <strong>₹' + data.total + '</strong> to start preparation.</p>' +
-          '<button class="btn btn-primary btn-block" style="background: linear-gradient(135deg, var(--primary), var(--secondary));" onclick="openPaymentPage(\'' + data.orderId + '\', ' + data.total + ')">💳 Pay Now</button>' +
-        '</div>';
+      const outstanding = Math.max(0, Math.round((data.total - (data.amountPaid || 0)) * 100) / 100);
+      if (outstanding <= 0 && data.paymentStatus !== 'Paid') {
+        paymentPromptEl.innerHTML = 
+          '<div class="payment-prompt-card glass mt-4" style="padding:16px; border: 1px solid var(--success); text-align: center; background: rgba(34,197,94,0.08)">' +
+            '<div style="font-size: 1.2rem; color: var(--success); font-weight: bold; margin-bottom: 4px;">✅ Payment Confirmed</div>' +
+            '<p style="font-size: 0.8rem; color: var(--text2);">Your payment has been received.</p>' +
+          '</div>';
+      } else {
+        const payText = (data.amountPaid || 0) > 0 ? 
+          `Please complete the payment of the difference amount: <strong>₹${outstanding}</strong>` : 
+          `Please complete the payment of <strong>₹${outstanding}</strong> to start preparation.`;
+        paymentPromptEl.innerHTML = 
+          '<div class="payment-prompt-card glass mt-4" style="padding:16px; border: 1px solid var(--primary); text-align: center; animation: pulse 2s infinite;">' +
+            '<div style="font-size: 1.3rem; margin-bottom: 8px;">⏳ Payment Required</div>' +
+            '<p style="font-size: 0.85rem; color: var(--text2); margin-bottom: 12px;">' + payText + '</p>' +
+            '<button class="btn btn-primary btn-block" style="background: linear-gradient(135deg, var(--primary), var(--secondary));" onclick="openPaymentPage(\'' + data.orderId + '\', ' + outstanding + ')">💳 Pay Now</button>' +
+          '</div>';
+      }
     }
   }
 
@@ -775,8 +830,63 @@ function openPaymentPage(orderId, amount) {
     clearInterval(S.trackInterval);
     S.trackInterval = null;
   }
+
+  const optionsContainer = $('payment-options-container');
+  if (optionsContainer) {
+    if (S.config.razorpayEnabled) {
+      optionsContainer.innerHTML = `
+        <button id="btn-trigger-razorpay" class="btn btn-primary btn-block" style="background: linear-gradient(135deg, #339af0, #228be6); box-shadow: 0 4px 15px rgba(34, 139, 230, 0.3);" onclick="triggerRazorpayPayment()">
+          💳 Pay via Razorpay (Card/UPI/Wallet)
+        </button>
+      `;
+    } else {
+      const upiId = S.config.ownerUpiId || '';
+      const upiName = S.config.ownerUpiName || S.config.restaurantName || 'Merchant';
+      
+      if (upiId && upiId.includes('@')) {
+        const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${parseFloat(amount).toFixed(2)}&cu=INR&tn=${encodeURIComponent('Order ' + orderId)}`;
+        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUri)}&bgcolor=ffffff&color=1a1a2e&margin=10`;
+        
+        optionsContainer.innerHTML = `
+          <div style="text-align: center; margin-bottom: 20px; background: rgba(255,255,255,0.02); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+            <div style="font-size: 0.8rem; color: var(--text2); margin-bottom: 12px; font-weight: 500;">
+              Scan QR code with GPay, PhonePe, or Paytm to pay directly
+            </div>
+            <div style="margin: 0 auto 12px auto; display: block; background: #fff; padding: 10px; border-radius: 8px; width: 180px; height: 180px;">
+              <img src="${qrCodeUrl}" alt="UPI QR Code" style="width: 160px; height: 160px; display: block; border-radius: 4px; border: none;">
+            </div>
+            <div style="font-size: 0.85rem; font-weight: 700; color: #fff; font-family: 'JetBrains Mono', monospace; word-break: break-all;">
+              UPI: ${upiId}
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-block" onclick="confirmOfflinePayment()">
+            ✅ I have paid / Pay Cash at Counter
+          </button>
+        `;
+      } else {
+        optionsContainer.innerHTML = `
+          <div style="text-align: center; padding: 20px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px solid var(--border); margin-bottom: 20px;">
+            <div style="font-size: 1.8rem; margin-bottom: 10px;">💵</div>
+            <div style="font-size: 0.85rem; color: var(--text2); font-weight: 500; line-height: 1.5;">
+              Online card payment is disabled by the restaurant.<br>
+              <strong>Please pay UPI or Cash directly at the counter.</strong>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block" onclick="confirmOfflinePayment()">
+            👍 Done / Pay Cash
+          </button>
+        `;
+      }
+    }
+  }
   
   navigateTo('payment');
+}
+
+function confirmOfflinePayment() {
+  showToast('Offline payment/cash request recorded! Please wait for approval.', 'success');
+  navigateTo('tracking');
+  startTracking(S.payingOrderId);
 }
 
 function cancelPayment() {
@@ -2875,3 +2985,80 @@ async function init(){
   if(INIT_PAGE==='admin'){navigateTo('admin');return}
 }
 init();
+
+// ===== CUSTOM MODAL SYSTEM =====
+function showCustomModal(title, body, actions = []) {
+  const overlay = $('modal-overlay');
+  const content = $('modal-content');
+  if (!overlay || !content) return;
+
+  let actionsHtml = actions.map(act => {
+    const cls = act.class || 'btn-secondary';
+    return `<button class="btn ${cls} btn-block" id="${act.id || ''}" onclick="${act.onclick}">${act.text}</button>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div class="modal-title">${title}</div>
+    <div class="modal-body">${body}</div>
+    <div class="modal-actions">${actionsHtml}</div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+function closeCustomModal() {
+  const overlay = $('modal-overlay');
+  if (overlay) overlay.classList.remove('active');
+}
+
+if ($('modal-overlay')) {
+  $('modal-overlay').addEventListener('click', e => {
+    if (e.target === $('modal-overlay')) closeCustomModal();
+  });
+}
+
+async function handleUpdateExistingOrder(activeOrderId) {
+  closeCustomModal();
+  const table = $('checkout-table') ? $('checkout-table').value : S.table;
+  if (!S.cart.length) return showToast('Cart is empty', 'error');
+
+  showLoader('Updating order...');
+  const data = {
+    orderId: activeOrderId,
+    tableNumber: table,
+    customerName: S.user.name,
+    customerPhone: S.user.phone,
+    items: S.cart.map(c => ({
+      id: c.id,
+      name: c.name + (c.portion ? ' (' + c.portion + ')' : ''),
+      qty: c.qty,
+      price: c.price
+    })),
+    specialInstructions: $('checkout-notes') ? $('checkout-notes').value : ''
+  };
+
+  try {
+    const r = await callServer('updateExistingOrder', activeOrderId, data);
+    hideLoader();
+    if (r.success) {
+      const diffAmount = r.data.differenceAmount;
+      const orderId = r.data.orderId;
+      S.cart = [];
+      updateCartBadge();
+      
+      if (diffAmount > 0) {
+        showToast('Order updated! Proceeding to payment for difference...', 'success');
+        openPaymentPage(orderId, diffAmount);
+      } else {
+        showToast('Order updated successfully! 🎉', 'success');
+        navigateTo('tracking');
+        startTracking(orderId);
+      }
+    } else {
+      showToast(r.message, 'error');
+    }
+  } catch (e) {
+    hideLoader();
+    showToast('Failed to update order', 'error');
+  }
+}
