@@ -5,6 +5,6 @@
 const CONFIG = {
   // Replace this with your Google Apps Script Web App Deployment URL
   // Example: "https://script.google.com/macros/s/.../exec"
-  GAS_API_URL: "https://script.google.com/macros/s/AKfycbxb7hviQHxQw5V3-Frd3XVQhvCQ2ISluzN8MLur0huDzZOfR7TjUQSdLDZz23epw-Bf4A/exec",
+  GAS_API_URL: "https://script.google.com/macros/s/AKfycbwABe5aPQXLVefA82rmFoX9Zn47YkpgMCxm56cZnHaZNgo-O3j5i5vlDCYuDr1oEhmbtQ/exec",
   REQUEST_TIMEOUT: 30000
 };
