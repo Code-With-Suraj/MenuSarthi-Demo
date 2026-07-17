@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MenuSarthi — Digital Menu</title>
+  <link rel="shortcut icon" href="https://em-content.zobj.net/source/apple/391/fork-and-knife-with-plate_1f37d-fe0f.png" type="image/png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+<div id="app">
+  <!-- Decorative Ambient Glows -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- ========== MAINTENANCE VIEW (Subscription Expired — Customer Facing) ========== -->
+  <div id="view-maintenance" class="view">
+    <div class="maintenance-page">
+      <div class="maintenance-glow maintenance-glow-1"></div>
+      <div class="maintenance-glow maintenance-glow-2"></div>
+      <div class="maintenance-icon-wrap">
+        <div class="maintenance-icon">🔧</div>
+        <div class="maintenance-pulse-ring"></div>
+        <div class="maintenance-pulse-ring delay-1"></div>
+      </div>
+      <h1 class="maintenance-title">We'll Be Right Back</h1>
+      <p class="maintenance-subtitle">Our team is working on improvements to serve you better.</p>
+      <div class="maintenance-card glass">
+        <div class="maintenance-card-icon">⚙️</div>
+        <p>Service is temporarily unavailable. We're upgrading our systems for a better experience.</p>
+      </div>
+      <div class="maintenance-footer">
+        <span class="maintenance-dot"></span> System Maintenance in Progress
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== LANDING VIEW ========== -->
+  <div id="view-landing" class="view active">
+    <div class="landing">
+      <div class="landing-logo" id="landing-logo">🍽️</div>
+      <h1><span class="text-gradient" id="landing-name">MenuSarthi</span></h1>
+      <p class="tagline" id="landing-tagline">Scan • Order • Enjoy</p>
+      <div class="table-badge" id="table-badge" style="display:none">
+        <span>📍</span> Table <strong id="table-display"></strong>
+      </div>
+      <div class="landing-actions">
+        <button class="btn btn-primary btn-block" onclick="navigateTo('menu')">🍽️ View Menu</button>
+        <button class="btn btn-secondary btn-block" onclick="showAuth('login')">👤 Login / Sign Up</button>
+      </div>
+      <div class="powered-by powered-by-landing" id="powered-by-landing">Powered by <a href="#">MenuSarthi</a></div>
+    </div>
+  </div>
+
+  <!-- ========== AUTH VIEW ========== -->
+  <div id="view-auth" class="view">
+    <div class="auth-container">
+      <button class="auth-back" onclick="navigateTo('landing')">← Back</button>
+
+      <!-- Login Form -->
+      <div id="auth-login">
+        <h2>Welcome Back 👋</h2>
+        <p class="auth-subtitle">Login with your phone number</p>
+        <div class="input-group">
+          <label>Phone Number</label>
+          <input type="tel" id="login-phone" placeholder="Enter 10-digit number" maxlength="10">
+        </div>
+        <div class="input-group">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="Enter password">
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-login" onclick="handleLogin()">Login</button>
+        <div class="auth-toggle">Don't have an account? <a onclick="showAuth('signup')">Sign Up</a></div>
+      </div>
+
+      <!-- Signup Form -->
+      <div id="auth-signup" class="hidden">
+        <h2>Create Account ✨</h2>
+        <p class="auth-subtitle">Quick signup to track your orders</p>
+        <div class="input-group">
+          <label>Full Name</label>
+          <input type="text" id="signup-name" placeholder="Enter your name">
+        </div>
+        <div class="input-group">
+          <label>Phone Number</label>
+          <input type="tel" id="signup-phone" placeholder="Enter 10-digit number" maxlength="10">
+        </div>
+        <div class="input-group">
+          <label>Password</label>
+          <input type="password" id="signup-password" placeholder="Create a password (min 4 chars)">
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-signup" onclick="handleRegister()">Create Account</button>
+        <div class="auth-toggle">Already have an account? <a onclick="showAuth('login')">Login</a></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== MENU VIEW ========== -->
+  <div id="view-menu" class="view">
+    <div class="menu-header">
+      <div>
+        <h2 id="menu-title">Menu</h2>
+        <div class="user-info" id="user-greeting"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="menu-account-btn" onclick="handleAccountClick()">👤</button>
+    </div>
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="menu-search" placeholder="Search dishes..." oninput="filterMenu()">
+    </div>
+    <div class="category-tabs" id="category-tabs"></div>
+    <div class="menu-grid" id="menu-grid"></div>
+  </div>
+
+  <!-- ========== CART VIEW ========== -->
+  <div id="view-cart" class="view">
+    <div class="cart-header">
+      <button class="auth-back" onclick="navigateTo('menu')">← Menu</button>
+      <h2>Your Cart</h2>
+      <button class="btn btn-ghost btn-sm" onclick="clearCart()" id="clear-cart-btn">Clear</button>
+    </div>
+    <div id="cart-revision-banner-container"></div>
+    <div id="cart-items"></div>
+    <div id="cart-addons-section"></div>
+    <div id="cart-summary-section"></div>
+  </div>
+
+  <!-- ========== ORDER TRACKING VIEW ========== -->
+  <div id="view-tracking" class="view">
+    <div class="tracking-container">
+      <div class="glass tracking-card">
+        <div class="order-id" id="track-order-id"></div>
+        <div class="order-table" id="track-table"></div>
+        <div style="font-size:.8rem;color:var(--text3);margin-top:4px" id="track-time"></div>
+      </div>
+      <div id="revision-banner-container"></div>
+      <div class="progress-steps" id="progress-steps">
+        <div class="progress-line" id="progress-line" style="width:0%"></div>
+        <div class="step" data-step="Received">
+          <div class="step-circle">📋</div>
+          <div class="step-label">Order Received</div>
+        </div>
+        <div class="step" data-step="Preparing">
+          <div class="step-circle">👨‍🍳</div>
+          <div class="step-label">Preparing</div>
+        </div>
+        <div class="step" data-step="Ready">
+          <div class="step-circle">✅</div>
+          <div class="step-label">Ready!</div>
+        </div>
+        <div class="step" data-step="Completed">
+          <div class="step-circle">😋</div>
+          <div class="step-label">Completed</div>
+        </div>
+      </div>
+      <div id="eta-timer-container"></div>
+      <div class="glass" style="padding:16px;margin-top:24px" id="track-items-section"></div>
+      <div id="payment-prompt-container"></div>
+      <div class="tracking-actions" style="margin-top:20px" id="tracking-actions-container">
+        <button class="btn btn-secondary" style="flex:1" onclick="navigateTo('menu')">🍽️ Order More</button>
+        <button class="btn btn-primary" style="flex:1" onclick="refreshTracking()">🔄 Refresh</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PAYMENT VIEW ========== -->
+  <div id="view-payment" class="view">
+    <div class="payment-container">
+      <button class="auth-back" id="payment-back-btn" onclick="cancelPayment()">← Back</button>
+      
+      <div class="glass payment-card">
+        <div class="payment-header">
+          <div class="payment-logo" style="background: rgba(51, 154, 240, 0.1); color: #339af0;">💳</div>
+          <h2 id="pay-merchant-name">MenuSarthi Payments</h2>
+          <p class="pay-subtitle">Secured by Razorpay</p>
+        </div>
+        
+        <div class="payment-amount-box">
+          <span class="pay-currency">₹</span>
+          <span class="pay-amount" id="pay-amount-val">0.00</span>
+        </div>
+        
+        <div class="payment-details-list">
+          <div class="pay-detail-row">
+            <span>Order Reference</span>
+            <span class="pay-detail-val" id="pay-order-id">ORD-XYZ</span>
+          </div>
+          <div class="pay-detail-row">
+            <span>Status</span>
+            <span class="pay-detail-val" id="pay-status-label" style="color: var(--warning); font-weight: bold;">Unpaid</span>
+          </div>
+        </div>
+
+        <div class="payment-actions" style="margin-top: 30px;">
+          <button id="btn-trigger-razorpay" class="btn btn-primary btn-block" style="background: linear-gradient(135deg, #339af0, #228be6); box-shadow: 0 4px 15px rgba(34, 139, 230, 0.3);" onclick="triggerRazorpayPayment()">
+            💳 Pay via Razorpay
+          </button>
+        </div>
+
+        <div class="security-badge" style="margin-top: 24px; text-align: center; font-size: 0.75rem; color: var(--text3); display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <span>🔒</span> Secured with 256-bit encryption
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== ORDER HISTORY VIEW ========== -->
+  <div id="view-orders" class="view">
+    <h2 style="margin-bottom:16px">📦 My Orders</h2>
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="orders-search" placeholder="Search orders by ID, status, items..." oninput="renderMyOrders()" autocorrect="off" autocapitalize="none" spellcheck="false">
+    </div>
+    <div id="orders-list"></div>
+  </div>
+
+  <!-- ========== ADMIN VIEW ========== -->
+  <div id="view-admin" class="view">
+    <!-- Admin Login Screen -->
+<div id="admin-login-screen" class="admin-login">
+  <div class="landing-logo" style="font-size:36px;width:80px;height:80px;margin-bottom:20px">🔐</div>
+  <h2>Staff Dashboard</h2>
+  <p>Enter admin password to continue</p>
+  <div class="input-group">
+    <label>Admin Password</label>
+    <input type="password" id="admin-password" placeholder="Enter password" onkeydown="if(event.key==='Enter')handleAdminLogin()">
+  </div>
+  <button class="btn btn-primary btn-block" onclick="handleAdminLogin()" style="max-width:300px">🔓 Login</button>
+</div>
+
+<!-- Admin Dashboard (shown after login) -->
+<div id="admin-dashboard" class="hidden">
+  <div class="admin-header">
+    <h2>📊 Dashboard</h2>
+    <button class="btn btn-ghost btn-sm" onclick="handleAdminLogout()">Logout ↗</button>
+  </div>
+
+  <!-- Subscription Status Banner (populated by JS) -->
+  <div id="subscription-banner-container"></div>
+
+  <!-- Stats -->
+  <div class="stat-cards" id="admin-stats">
+    <div class="stat-card"><div class="stat-val" id="stat-total">0</div><div class="stat-label">Today's Orders</div></div>
+    <div class="stat-card"><div class="stat-val" id="stat-revenue">₹0</div><div class="stat-label">Revenue</div></div>
+    <div class="stat-card"><div class="stat-val" id="stat-active">0</div><div class="stat-label">Active Orders</div></div>
+    <div class="stat-card"><div class="stat-val" id="stat-avg">₹0</div><div class="stat-label">Avg Order</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="admin-tabs">
+    <button class="admin-tab active" data-tab="admin-orders-tab" onclick="switchAdminTab(this,'admin-orders-tab')">🔔 Orders</button>
+    <button class="admin-tab" data-tab="admin-menu-tab" onclick="switchAdminTab(this,'admin-menu-tab')">📋 Menu</button>
+    <button class="admin-tab" data-tab="admin-addons-tab" onclick="switchAdminTab(this,'admin-addons-tab')">🧩 Add-Ons</button>
+    <button class="admin-tab" data-tab="admin-reports-tab" onclick="switchAdminTab(this,'admin-reports-tab')">📊 Reports</button>
+    <button class="admin-tab" data-tab="admin-qr-tab" onclick="switchAdminTab(this,'admin-qr-tab')">📱 QR</button>
+    <button class="admin-tab" data-tab="admin-settings-tab" onclick="switchAdminTab(this,'admin-settings-tab')">⚙️ Settings</button>
+  </div>
+
+  <!-- Orders Tab -->
+  <div id="admin-orders-tab">
+    <div class="search-box" style="margin-bottom:16px">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="admin-orders-search" placeholder="Search orders by ID, name, table or items..." oninput="filterAdminOrders()" autocorrect="off" autocapitalize="none" spellcheck="false">
+    </div>
+    <div id="admin-orders-list">
+      <div class="empty-state"><div class="empty-icon">🎉</div><p>No active orders</p></div>
+    </div>
+  </div>
+
+  <!-- Menu Tab -->
+  <div id="admin-menu-tab" class="hidden">
+    <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="showAddItemModal()" style="margin-bottom:0">+ Add Item</button>
+      <div class="search-box" style="flex:1;margin-bottom:0;min-width:200px">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="admin-menu-search" placeholder="Search menu by name, category or ID..." oninput="renderAdminMenu()" autocorrect="off" autocapitalize="none" spellcheck="false">
+      </div>
+    </div>
+    <div id="admin-menu-list"></div>
+  </div>
+
+  <!-- Add-Ons Tab -->
+  <div id="admin-addons-tab" class="hidden">
+    <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="showAddAddOnModal()" style="margin-bottom:0">+ Add Add-On</button>
+      <div class="search-box" style="flex:1;margin-bottom:0;min-width:200px">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="admin-addons-search" placeholder="Search add-ons by name or links..." oninput="renderAdminAddOns()" autocorrect="off" autocapitalize="none" spellcheck="false">
+      </div>
+    </div>
+    <div id="admin-addons-list"></div>
+  </div>
+
+  <!-- Reports Tab -->
+  <div id="admin-reports-tab" class="hidden">
+    <div class="glass" style="padding:20px;margin-bottom:20px">
+      <h3 style="margin-bottom:16px">📊 Financial Reports (for Owner & CA)</h3>
+      
+      <!-- Date Filters -->
+      <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+        <div class="input-group" style="flex:1;min-width:140px;margin-bottom:0">
+          <label>Start Date</label>
+          <input type="date" id="rep-start-date">
+        </div>
+        <div class="input-group" style="flex:1;min-width:140px;margin-bottom:0">
+          <label>End Date</label>
+          <input type="date" id="rep-end-date">
+        </div>
+        <div style="display:flex;align-items:flex-end;flex:1;min-width:140px">
+          <button class="btn btn-primary btn-block" onclick="loadFinancialReport()">🔍 Get Report</button>
+        </div>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="stat-cards" style="margin-top:20px;margin-bottom:20px">
+        <div class="stat-card" style="border:1px solid var(--border)">
+          <div class="stat-val" id="rep-stat-count">0</div>
+          <div class="stat-label">Invoices</div>
+        </div>
+        <div class="stat-card" style="border:1px solid var(--border)">
+          <div class="stat-val" id="rep-stat-subtotal">₹0.00</div>
+          <div class="stat-label">Taxable Value</div>
+        </div>
+        <div class="stat-card" style="border:1px solid var(--border)">
+          <div class="stat-val" id="rep-stat-gst">₹0.00</div>
+          <div class="stat-label">GST Collected</div>
+        </div>
+        <div class="stat-card" style="border:1px solid var(--border)">
+          <div class="stat-val" id="rep-stat-total">₹0.00</div>
+          <div class="stat-label">Total Revenue</div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <button class="btn btn-success btn-block" style="background:linear-gradient(135deg,var(--success),#2ed573);margin-bottom:10px" onclick="exportFinancialReportCSV()">📥 Export CA-Compliant CSV</button>
+    </div>
+
+    <!-- Detailed Table -->
+    <div class="glass" style="padding:20px;overflow-x:auto;margin-bottom:20px">
+      <h4 style="margin-bottom:12px">Detailed Order Log</h4>
+      <table style="width:100%;border-collapse:collapse;text-align:left;font-size:0.8rem" id="reports-table">
+        <thead>
+          <tr style="border-bottom:1.5px solid var(--border);color:var(--text2)">
+            <th style="padding:8px 4px">Order ID</th>
+            <th style="padding:8px 4px">Date</th>
+            <th style="padding:8px 4px">Table</th>
+            <th style="padding:8px 4px;text-align:right">Taxable (Sub)</th>
+            <th style="padding:8px 4px;text-align:right">GST</th>
+            <th style="padding:8px 4px;text-align:right">Total</th>
+            <th style="padding:8px 4px;text-align:center">Payment</th>
+          </tr>
+        </thead>
+        <tbody id="reports-table-body">
+          <tr>
+            <td colspan="7" style="text-align:center;padding:20px;color:var(--text3)">Select date range and click Get Report</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- QR Codes Tab -->
+  <div id="admin-qr-tab" class="hidden">
+    <div class="glass" style="padding:20px;margin-bottom:20px">
+      <h3 style="margin-bottom:4px">📱 Table QR Code Generator</h3>
+      <p style="font-size:.8rem;color:var(--text2);margin-bottom:20px">Generate & print modern QR codes for your tables. Customers scan → land directly on your digital menu!</p>
+
+      <!-- Design Selector -->
+      <div style="margin-bottom:20px">
+        <label style="display:block;font-size:0.82rem;color:var(--text2);margin-bottom:10px;font-weight:500;letter-spacing:0.01em">🎨 Choose QR Design</label>
+        <div class="qr-design-selector" id="qr-design-selector">
+          <!-- Design 1: Classic -->
+          <div class="qr-design-option active" data-design="classic" onclick="selectQRDesign(this,'classic')">
+            <div class="qr-design-preview qr-preview-classic">
+              <div class="qdp-brand">Brand</div>
+              <div class="qdp-table">T-1</div>
+              <div class="qdp-qr-placeholder">▣</div>
+              <div class="qdp-scan">Scan</div>
+            </div>
+            <span class="qr-design-name">Classic</span>
+          </div>
+          <!-- Design 2: Minimal -->
+          <div class="qr-design-option" data-design="minimal" onclick="selectQRDesign(this,'minimal')">
+            <div class="qr-design-preview qr-preview-minimal">
+              <div class="qdp-brand">Brand</div>
+              <div class="qdp-table">T-1</div>
+              <div class="qdp-qr-placeholder">▣</div>
+              <div class="qdp-scan">Scan</div>
+            </div>
+            <span class="qr-design-name">Minimal</span>
+          </div>
+          <!-- Design 3: Gradient Wave -->
+          <div class="qr-design-option" data-design="gradient" onclick="selectQRDesign(this,'gradient')">
+            <div class="qr-design-preview qr-preview-gradient">
+              <div class="qdp-brand">Brand</div>
+              <div class="qdp-table">T-1</div>
+              <div class="qdp-qr-placeholder">▣</div>
+              <div class="qdp-scan">Scan</div>
+            </div>
+            <span class="qr-design-name">Gradient</span>
+          </div>
+          <!-- Design 4: Neon Glow -->
+          <div class="qr-design-option" data-design="neon" onclick="selectQRDesign(this,'neon')">
+            <div class="qr-design-preview qr-preview-neon">
+              <div class="qdp-brand">Brand</div>
+              <div class="qdp-table">T-1</div>
+              <div class="qdp-qr-placeholder">▣</div>
+              <div class="qdp-scan">Scan</div>
+            </div>
+            <span class="qr-design-name">Neon</span>
+          </div>
+          <!-- Design 5: Royal Gold -->
+          <div class="qr-design-option" data-design="royal" onclick="selectQRDesign(this,'royal')">
+            <div class="qr-design-preview qr-preview-royal">
+              <div class="qdp-brand">Brand</div>
+              <div class="qdp-table">T-1</div>
+              <div class="qdp-qr-placeholder">▣</div>
+              <div class="qdp-scan">Scan</div>
+            </div>
+            <span class="qr-design-name">Royal</span>
+          </div>
+          <!-- Design 6: Vibrant Pop -->
+          <div class="qr-design-option" data-design="vibrant" onclick="selectQRDesign(this,'vibrant')">
+            <div class="qr-design-preview qr-preview-vibrant">
+              <div class="qdp-brand">Brand</div>
+              <div class="qdp-table">T-1</div>
+              <div class="qdp-qr-placeholder">▣</div>
+              <div class="qdp-scan">Scan</div>
+            </div>
+            <span class="qr-design-name">Vibrant</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:flex-end">
+        <div class="input-group" style="flex:1;min-width:100px;margin-bottom:0">
+          <label>From Table</label>
+          <input type="number" id="qr-from" value="1" min="1">
+        </div>
+        <div class="input-group" style="flex:1;min-width:100px;margin-bottom:0">
+          <label>To Table</label>
+          <input type="number" id="qr-to" value="10" min="1">
+        </div>
+        <div style="flex:1;min-width:140px">
+          <button class="btn btn-primary btn-block" onclick="generateTableQRCodes()">⚡ Generate QR Codes</button>
+        </div>
+      </div>
+
+      <!-- Print All -->
+      <div id="qr-print-all-container" class="hidden" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-success btn-block" style="background:linear-gradient(135deg,var(--success),#2ed573);flex:1;min-width:200px" onclick="printAllQRCodes()">🖨️ Print All QR Codes</button>
+        <button class="btn btn-secondary btn-block" style="flex:1;min-width:160px" onclick="downloadAllQRPDF()">📥 Download as Print Sheet</button>
+      </div>
+    </div>
+
+    <!-- QR Cards Grid -->
+    <div id="qr-cards-grid" class="qr-grid"></div>
+  </div>
+
+  <!-- Settings Tab -->
+  <div id="admin-settings-tab" class="hidden">
+    <div class="glass" style="padding:20px">
+      <h3 style="margin-bottom:16px">Restaurant Settings</h3>
+      
+      <div class="settings-grid">
+        <div class="input-group">
+          <label>Restaurant Name</label>
+          <input type="text" id="cfg-name" placeholder="Restaurant name">
+        </div>
+        <div class="input-group">
+          <label>Tagline</label>
+          <input type="text" id="cfg-tagline" placeholder="Your tagline">
+        </div>
+        <div class="input-group">
+          <label>Logo URL</label>
+          <input type="url" id="cfg-logo" placeholder="https://...">
+        </div>
+        <div class="input-group">
+          <label>Total Tables</label>
+          <input type="number" id="cfg-tables" placeholder="20" min="1">
+        </div>
+        <div class="input-group">
+          <label>UPI ID for Payments</label>
+          <input type="text" id="cfg-upi-id" placeholder="e.g. merchant@upi">
+        </div>
+        <div class="input-group">
+          <label>Merchant / Owner Name (for UPI)</label>
+          <input type="text" id="cfg-upi-name" placeholder="e.g. MenuSarthi Restaurant">
+        </div>
+      </div>
+
+      <!-- GST Settings -->
+      <div class="gst-settings">
+        <h4>🧾 Tax / GST Settings</h4>
+        <div class="gst-toggle-row" style="margin-bottom:16px">
+          <span>Enable GST on orders</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="cfg-gst-enabled">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="gst-settings-grid">
+          <div class="input-group">
+            <label>GST Rate (%)</label>
+            <input type="number" id="cfg-gst-rate" placeholder="5" min="0" max="28" step="0.5">
+          </div>
+          <div class="input-group">
+            <label>GSTIN Number (optional — shown on receipts)</label>
+            <input type="text" id="cfg-gst-number" placeholder="e.g. 22AAAAA0000A1Z5">
+          </div>
+        </div>
+      </div>
+
+      <div class="input-group" style="margin-top:20px">
+        <label>New Admin Password (leave blank to keep current)</label>
+        <input type="password" id="cfg-password" placeholder="New password">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="saveAdminSettings()">💾 Save Settings</button>
+    </div>
+  </div>
+</div>
+
+  </div>
+
+  <!-- ========== FLOATING CART BUTTON ========== -->
+  <button class="cart-fab hidden" id="cart-fab" onclick="navigateTo('cart')">
+    🛒 <span class="badge hidden" id="cart-badge">0</span>
+  </button>
+
+  <!-- ========== BOTTOM NAV ========== -->
+  <nav class="bottom-nav" id="bottom-nav">
+    <button class="nav-item active" data-view="menu" onclick="navigateTo('menu')">
+      <span class="nav-icon">🍽️</span><span class="nav-label">Menu</span>
+    </button>
+    <button class="nav-item" data-view="cart" onclick="navigateTo('cart')">
+      <span class="nav-icon">🛒</span><span class="nav-label">Cart</span>
+    </button>
+    <button class="nav-item" data-view="tracking" onclick="navigateTo('tracking')">
+      <span class="nav-icon">📍</span><span class="nav-label">Track</span>
+    </button>
+    <button class="nav-item" data-view="orders" onclick="handleOrdersNav()">
+      <span class="nav-icon">📦</span><span class="nav-label">Orders</span>
+    </button>
+  </nav>
+
+  <!-- ========== PORTION SELECTOR BOTTOM SHEET ========== -->
+  <div class="portion-overlay" id="portion-overlay">
+    <div class="portion-sheet" id="portion-sheet"></div>
+  </div>
+
+  <!-- ========== MODAL ========== -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="modal-content"></div>
+  </div>
+
+  <!-- ========== TOAST CONTAINER ========== -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- ========== LOADER ========== -->
+  <div class="loader-overlay" id="loader-overlay">
+    <div class="loader-spinner"></div>
+    <div class="loader-text" id="loader-text">Loading...</div>
+  </div>
+
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
