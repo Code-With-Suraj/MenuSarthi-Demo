@@ -2428,6 +2428,33 @@ h4 { font-size: 1.05rem; font-weight: 600; }
 }
 .qr-preview-vibrant .qdp-table { color: #ff006e; }
 
+.qr-preview-modern {
+  background: #ffffff;
+  color: #1a1a2e;
+  border-color: #dee2e6;
+  position: relative;
+}
+.qr-preview-modern .qdp-banner-placeholder {
+  width: 100%;
+  height: 24px;
+  background: #ff5e14;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.qr-preview-modern .qdp-logo-placeholder {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f1f3f5;
+  border: 1px solid #dee2e6;
+  margin-top: 14px;
+}
+.qr-preview-modern .qdp-table { color: #ff5e14; font-size: 7px; margin-top: 2px; }
+.qr-preview-modern .qdp-qr-placeholder { color: #1a1a2e; font-size: 14px; margin: 2px 0; }
+.qr-preview-modern .qdp-scan { color: #868e96; font-size: 5px; }
+.qr-preview-modern .qdp-footer-placeholder { color: #adb5bd; font-size: 4px; }
+
 /* Grid layout */
 .qr-grid {
   display: grid;
@@ -2560,6 +2587,124 @@ h4 { font-size: 1.05rem; font-weight: 600; }
 /* =============================================
    THEME STYLES FOR GENERATED QR CARDS
    ============================================= */
+
+/* 0. MODERN STAND THEME */
+.qr-card.qr-design-modern {
+  background: #ffffff;
+  border: 1px solid #e9ecef;
+  color: #1a1a2e;
+  padding: 0;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 440px;
+  width: 100%;
+}
+.qr-card.qr-design-modern:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12);
+  border-color: #ff5e14;
+}
+.qr-card.qr-design-modern .qr-card-banner {
+  width: 100%;
+  height: 110px;
+  position: relative;
+  overflow: hidden;
+  background: #f1f3f5;
+}
+.qr-card.qr-design-modern .qr-card-banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.qr-card.qr-design-modern .qr-card-table-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.qr-card.qr-design-modern .qr-card-logo-container {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-top: -32px;
+  z-index: 2;
+}
+.qr-card.qr-design-modern .qr-card-logo-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.qr-card.qr-design-modern .qr-card-heading {
+  font-family: var(--font-head);
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #1a1a2e;
+  margin-top: 12px;
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+.qr-card.qr-design-modern .qr-card-qr-wrapper {
+  background: #ffffff;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid #e9ecef;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qr-card.qr-design-modern .qr-card-qr-wrapper img {
+  width: 130px;
+  height: 130px;
+  display: block;
+}
+.qr-card.qr-design-modern .qr-card-badge-line {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ff5e14;
+  margin-bottom: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.qr-card.qr-design-modern .qr-card-footer {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #868e96;
+  margin-bottom: 16px;
+  width: 100%;
+  text-align: center;
+  border-top: 1px solid #f1f3f5;
+  padding-top: 12px;
+  margin-top: auto;
+}
+.qr-card.qr-design-modern .qr-card-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  width: 100%;
+  padding: 0 20px 16px 20px;
+  box-sizing: border-box;
+}
 
 /* 1. CLASSIC THEME */
 .qr-card.qr-design-classic {

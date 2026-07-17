@@ -2095,7 +2095,7 @@ function initQRTab() {
     $('qr-to').dataset.initialized = 'true';
   }
   if (!S.selectedQRDesign) {
-    S.selectedQRDesign = 'classic';
+    S.selectedQRDesign = 'modern';
   }
 }
 
@@ -2128,42 +2128,73 @@ function generateTableQRCodes() {
   const restaurantName = S.config.restaurantName || 'MenuSarthi';
   const logoUrl = S.config.logoUrl || '';
   const grid = $('qr-cards-grid');
-  const design = S.selectedQRDesign || 'classic';
+  const design = S.selectedQRDesign || 'modern';
   
   let html = '';
   for (let t = from; t <= to; t++) {
     const tableUrl = baseUrl + '?table=' + t;
     const qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(tableUrl) + '&bgcolor=ffffff&color=1a1a2e&margin=10';
 
-    const logoHtml = logoUrl 
-      ? '<img src="' + logoUrl + '" alt="Logo" style="width:36px;height:36px;border-radius:10px;object-fit:cover">'
-      : '<span style="font-size:1.5rem">🍽️</span>';
+    if (design === 'modern') {
+      const bannerUrl = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';
+      const logoHtml = logoUrl 
+        ? '<img src="' + logoUrl + '" alt="Logo">'
+        : '<span style="font-size:1.8rem">🍽️</span>';
 
-    html += `
-      <div class="qr-card qr-design-${design}" id="qr-card-${t}">
-        <div class="qr-card-header">
-          <div class="qr-card-logo">${logoHtml}</div>
-          <div>
-            <div class="qr-card-brand">${restaurantName}</div>
-            <div class="qr-card-subtitle">Digital Menu</div>
+      html += `
+        <div class="qr-card qr-design-modern" id="qr-card-${t}">
+          <div class="qr-card-banner">
+            <img src="${bannerUrl}" alt="Banner" crossorigin="anonymous">
+            <div class="qr-card-table-badge">Table ${t}</div>
+          </div>
+          <div class="qr-card-logo-container">
+            ${logoHtml}
+          </div>
+          <div class="qr-card-heading">Today's Menu</div>
+          <div class="qr-card-qr-wrapper">
+            <img src="${qrApiUrl}" alt="QR Code Table ${t}" loading="lazy" crossorigin="anonymous">
+          </div>
+          <div class="qr-card-badge-line">Fresh • Hygienic • Delicious</div>
+          <div class="qr-card-footer">
+            Powered by MenuSarthi
+          </div>
+          <div class="qr-card-actions">
+            <button class="btn btn-ghost btn-sm" style="color:inherit;border:1px solid rgba(128,128,128,0.2)" onclick="printSingleQR(${t})">🖨️ Print</button>
+            <button class="btn btn-ghost btn-sm" style="color:inherit;border:1px solid rgba(128,128,128,0.2)" onclick="downloadSingleQR(${t})">📥 Save</button>
           </div>
         </div>
-        <div class="qr-card-table-number">Table ${t}</div>
-        <div class="qr-card-qr-wrapper">
-          <img src="${qrApiUrl}" alt="QR Code Table ${t}" loading="lazy" crossorigin="anonymous">
+      `;
+    } else {
+      const logoHtml = logoUrl 
+        ? '<img src="' + logoUrl + '" alt="Logo" style="width:36px;height:36px;border-radius:10px;object-fit:cover">'
+        : '<span style="font-size:1.5rem">🍽️</span>';
+
+      html += `
+        <div class="qr-card qr-design-${design}" id="qr-card-${t}">
+          <div class="qr-card-header">
+            <div class="qr-card-logo">${logoHtml}</div>
+            <div>
+              <div class="qr-card-brand">${restaurantName}</div>
+              <div class="qr-card-subtitle">Digital Menu</div>
+            </div>
+          </div>
+          <div class="qr-card-table-number">Table ${t}</div>
+          <div class="qr-card-qr-wrapper">
+            <img src="${qrApiUrl}" alt="QR Code Table ${t}" loading="lazy" crossorigin="anonymous">
+          </div>
+          <div class="qr-card-instruction">
+            <span style="font-size:1.1rem">📱</span> Scan to Order
+          </div>
+          <div class="qr-card-footer">
+            Powered by MenuSarthi
+          </div>
+          <div class="qr-card-actions">
+            <button class="btn btn-ghost btn-sm" style="color:inherit;border:1px solid rgba(128,128,128,0.2)" onclick="printSingleQR(${t})">🖨️ Print</button>
+            <button class="btn btn-ghost btn-sm" style="color:inherit;border:1px solid rgba(128,128,128,0.2)" onclick="downloadSingleQR(${t})">📥 Save</button>
+          </div>
         </div>
-        <div class="qr-card-instruction">
-          <span style="font-size:1.1rem">📱</span> Scan to Order
-        </div>
-        <div class="qr-card-footer">
-          Powered by MenuSarthi
-        </div>
-        <div class="qr-card-actions">
-          <button class="btn btn-ghost btn-sm" style="color:inherit;border:1px solid rgba(128,128,128,0.2)" onclick="printSingleQR(${t})">🖨️ Print</button>
-          <button class="btn btn-ghost btn-sm" style="color:inherit;border:1px solid rgba(128,128,128,0.2)" onclick="downloadSingleQR(${t})">📥 Save</button>
-        </div>
-      </div>
-    `;
+      `;
+    }
   }
 
   grid.innerHTML = html;
@@ -2264,6 +2295,104 @@ function getQRPrintStyles(design) {
     
     /* THEME SPECIFIC PRINT STYLES */
     
+    /* 0. MODERN */
+    .print-design-modern {
+      background: #ffffff;
+      border: 1px solid #dee2e6;
+      color: #1a1a2e;
+      padding: 0;
+      min-height: 440px;
+    }
+    .print-design-modern .print-card-banner {
+      width: 100%;
+      height: 110px;
+      position: relative;
+      overflow: hidden;
+      background: #f1f3f5;
+    }
+    .print-design-modern .print-card-banner img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .print-design-modern .print-card-table-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #ffffff;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+    }
+    .print-design-modern .print-card-logo-container {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 3px solid #ffffff;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      margin-top: -30px;
+      z-index: 2;
+    }
+    .print-design-modern .print-card-logo-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .print-design-modern .print-card-logo-container span {
+      font-size: 24px;
+    }
+    .print-design-modern .print-card-heading {
+      font-family: 'Outfit', sans-serif;
+      font-size: 20px;
+      font-weight: 900;
+      color: #1a1a2e;
+      margin-top: 10px;
+      margin-bottom: 6px;
+    }
+    .print-design-modern .print-card-qr {
+      background: #ffffff;
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid #dee2e6;
+      display: inline-block;
+      margin: 4px auto 8px;
+    }
+    .print-design-modern .print-card-qr img {
+      width: 130px;
+      height: 130px;
+      display: block;
+    }
+    .print-design-modern .print-card-badge-line {
+      font-size: 11px;
+      font-weight: 700;
+      color: #ff5e14;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-family: 'Outfit', sans-serif;
+    }
+    .print-design-modern .print-card-footer {
+      font-size: 9px;
+      font-weight: 700;
+      color: #868e96;
+      margin-bottom: 16px;
+      width: 100%;
+      text-align: center;
+      border-top: 1px solid #f1f3f5;
+      padding-top: 10px;
+      margin-top: auto;
+      text-transform: none;
+      letter-spacing: 0.3px;
+    }
+    
     /* 1. CLASSIC */
     .print-design-classic {
       background: #111217;
@@ -2359,33 +2488,59 @@ function buildPrintCardsHTML(tableNumbers) {
   const baseUrl = getAppBaseUrl();
   const restaurantName = S.config.restaurantName || 'MenuSarthi';
   const logoUrl = S.config.logoUrl || '';
-  const design = S.selectedQRDesign || 'classic';
+  const design = S.selectedQRDesign || 'modern';
 
   let cardsHtml = '';
   tableNumbers.forEach(t => {
     const tableUrl = baseUrl + '?table=' + t;
     const qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(tableUrl) + '&bgcolor=ffffff&color=1a1a2e&margin=8';
-    const logoHtml = logoUrl 
-      ? '<img src="' + logoUrl + '" alt="Logo">'
-      : '<span style="font-size:1.2rem">🍽️</span>';
 
-    cardsHtml += `
-      <div class="print-card print-design-${design}">
-        <div class="print-card-header">
-          <div class="print-card-logo">${logoHtml}</div>
-          <div>
-            <div class="print-card-brand">${restaurantName}</div>
-            <div class="print-card-subtitle">Digital Menu</div>
+    if (design === 'modern') {
+      const bannerUrl = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';
+      const logoHtml = logoUrl 
+        ? '<img src="' + logoUrl + '" alt="Logo">'
+        : '<span style="font-size:1.5rem">🍽️</span>';
+
+      cardsHtml += `
+        <div class="print-card print-design-modern">
+          <div class="print-card-banner">
+            <img src="${bannerUrl}" alt="Banner" crossorigin="anonymous">
+            <div class="print-card-table-badge">Table ${t}</div>
           </div>
+          <div class="print-card-logo-container">
+            ${logoHtml}
+          </div>
+          <div class="print-card-heading">Today's Menu</div>
+          <div class="print-card-qr">
+            <img src="${qrApiUrl}" alt="QR Table ${t}" crossorigin="anonymous">
+          </div>
+          <div class="print-card-badge-line">Fresh • Hygienic • Delicious</div>
+          <div class="print-card-footer">Powered by MenuSarthi</div>
         </div>
-        <div class="print-card-table">Table ${t}</div>
-        <div class="print-card-qr">
-          <img src="${qrApiUrl}" alt="QR Table ${t}" crossorigin="anonymous">
+      `;
+    } else {
+      const logoHtml = logoUrl 
+        ? '<img src="' + logoUrl + '" alt="Logo">'
+        : '<span style="font-size:1.2rem">🍽️</span>';
+
+      cardsHtml += `
+        <div class="print-card print-design-${design}">
+          <div class="print-card-header">
+            <div class="print-card-logo">${logoHtml}</div>
+            <div>
+              <div class="print-card-brand">${restaurantName}</div>
+              <div class="print-card-subtitle">Digital Menu</div>
+            </div>
+          </div>
+          <div class="print-card-table">Table ${t}</div>
+          <div class="print-card-qr">
+            <img src="${qrApiUrl}" alt="QR Table ${t}" crossorigin="anonymous">
+          </div>
+          <div class="print-card-scan">📱 Scan to Order</div>
+          <div class="print-card-footer">Powered by MenuSarthi</div>
         </div>
-        <div class="print-card-scan">📱 Scan to Order</div>
-        <div class="print-card-footer">Powered by MenuSarthi</div>
-      </div>
-    `;
+      `;
+    }
   });
   return cardsHtml;
 }

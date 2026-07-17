@@ -371,8 +371,20 @@
       <div style="margin-bottom:20px">
         <label style="display:block;font-size:0.82rem;color:var(--text2);margin-bottom:10px;font-weight:500;letter-spacing:0.01em">🎨 Choose QR Design</label>
         <div class="qr-design-selector" id="qr-design-selector">
+          <!-- Design 0: Modern -->
+          <div class="qr-design-option active" data-design="modern" onclick="selectQRDesign(this,'modern')">
+            <div class="qr-design-preview qr-preview-modern">
+              <div class="qdp-banner-placeholder"></div>
+              <div class="qdp-logo-placeholder"></div>
+              <div class="qdp-table" style="z-index: 1;">Menu</div>
+              <div class="qdp-qr-placeholder" style="z-index: 1;">▣</div>
+              <div class="qdp-scan" style="z-index: 1;">Fresh</div>
+              <div class="qdp-footer-placeholder" style="z-index: 1;">Powered</div>
+            </div>
+            <span class="qr-design-name">Modern</span>
+          </div>
           <!-- Design 1: Classic -->
-          <div class="qr-design-option active" data-design="classic" onclick="selectQRDesign(this,'classic')">
+          <div class="qr-design-option" data-design="classic" onclick="selectQRDesign(this,'classic')">
             <div class="qr-design-preview qr-preview-classic">
               <div class="qdp-brand">Brand</div>
               <div class="qdp-table">T-1</div>
