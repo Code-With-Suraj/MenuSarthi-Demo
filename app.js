@@ -2438,16 +2438,19 @@ function renderSubscriptionBanner() {
   if (!sub.isActive) {
     // EXPIRED BANNER
     container.innerHTML = `
-      <div class="subscription-expired">
+      <div class="subscription-expired" style="display: flex; flex-direction: column; align-items: center;">
         <div class="sub-banner-icon">🚨</div>
         <div class="sub-banner-title">Subscription Expired</div>
         <div class="sub-banner-desc">
-          Your MenuSarthi subscription has expired. Renew now via Razorpay to instantly restore your digital menu.
+          Your MenuSarthi subscription has expired. Select a plan below and renew instantly to restore your digital menu.
         </div>
+        
+        <!-- Expired plans container -->
+        <div id="expired-plans-container" style="width: 100%; max-width: 500px; margin: 15px auto;">
+          <div style="text-align:center; padding:15px; color:var(--text3)">Loading subscription plans...</div>
+        </div>
+        
         <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
-          <button class="sub-renew-razorpay-btn" onclick="openSubscriptionRenewal()">
-            💳 Renew Subscription Online
-          </button>
           <a href="${waLink}" target="_blank" class="sub-renew-whatsapp-link">
             💬 Or renew manually via WhatsApp
           </a>
@@ -2458,6 +2461,9 @@ function renderSubscriptionBanner() {
         </div>
       </div>
     `;
+    
+    // Trigger loading of plans directly on the expired screen
+    setTimeout(loadExpiredPlans, 100);
   } else if (sub.isExpiringSoon) {
     // WARNING BANNER (≤7 days remaining)
     container.innerHTML = `
@@ -2500,6 +2506,7 @@ async function loadSubscriptionInSettings() {
 
       // Update S.subscriptionStatus just in case it updated
       S.subscriptionStatus = sub;
+      S.subscriptionPlans = plans;
 
       // Render status card
       const statusText = sub.isActive 
@@ -2581,9 +2588,13 @@ function selectSubPlan(planId) {
   const payBtn = $('btn-pay-sub');
   if (payBtn) {
     payBtn.disabled = false;
-    const planName = planId === 'monthly' ? 'Monthly' : planId === 'semiyearly' ? 'Semi-Yearly' : 'Yearly';
-    const planPrice = planId === 'monthly' ? '999' : planId === 'semiyearly' ? '4999' : '9999';
-    payBtn.innerHTML = `💳 Pay ₹${planPrice} via Razorpay — Renew ${planName}`;
+    const plans = S.subscriptionPlans || [
+      { id: 'monthly', name: 'Monthly', price: 999 },
+      { id: 'semiyearly', name: 'Semi-Yearly', price: 4999 },
+      { id: 'yearly', name: 'Yearly', price: 9999 }
+    ];
+    const plan = plans.find(p => p.id === planId) || { name: 'Plan', price: 0 };
+    payBtn.innerHTML = `💳 Pay ₹${plan.price} via Razorpay — Renew ${plan.name}`;
   }
 }
 
@@ -2631,6 +2642,140 @@ async function paySelectedSubscription() {
             
             // Reload settings
             loadSubscriptionInSettings();
+          } else {
+            showToast(verifyRes.message || 'Verification failed', 'error');
+          }
+        } catch (e) {
+          hideLoader();
+          showToast('Error verifying subscription payment', 'error');
+        }
+      },
+      "prefill": {
+        "name": S.user ? S.user.name : "",
+        "contact": S.user ? S.user.phone : ""
+      },
+      "theme": {
+        "color": "#ff6b35"
+      },
+      "modal": {
+        "ondismiss": function() {
+          showToast('Payment cancelled', 'info');
+        }
+      }
+    };
+    const rzp = new Razorpay(options);
+    rzp.open();
+  } catch (e) {
+    hideLoader();
+    showToast('Failed to start checkout: ' + e.message, 'error');
+  }
+}
+
+let selectedExpiredSubPlanId = null;
+
+async function loadExpiredPlans() {
+  const el = $('expired-plans-container');
+  if (!el) return;
+  
+  try {
+    const r = await callServer('getSubscriptionPlans');
+    if (r.success && r.data) {
+      const plans = r.data;
+      S.subscriptionPlans = plans;
+      el.innerHTML = `
+        <div class="sub-plans-grid" style="margin-top: 16px;">
+          ${plans.map(p => `
+            <div class="plan-card" id="plan-expired-${p.id}" onclick="selectExpiredSubPlan('${p.id}')" style="background:var(--surface); border:1px solid var(--border); padding:16px; border-radius:var(--radius-sm); text-align:center; cursor:pointer;">
+              <div class="plan-name" style="font-weight:700; margin-bottom:4px; font-size:0.85rem;">${p.name}</div>
+              <div class="plan-price" style="font-size:1.4rem; font-weight:800; color:#fff; margin-bottom:4px;">₹${p.price}</div>
+              <div class="plan-duration" style="font-size:0.7rem; color:var(--text3);">${p.description}</div>
+              ${p.savings ? `<div class="plan-savings-badge" style="font-size:0.6rem; margin-top:6px; display:inline-block;">Save ${p.savings}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+        <button id="btn-pay-expired-sub" class="btn btn-primary btn-block" style="margin-top: 16px; background:linear-gradient(135deg, var(--primary), var(--secondary)); border:none; color:#08090c; font-weight:800;" onclick="payExpiredSubscription()" disabled>
+          💳 Select a plan above to Renew
+        </button>
+      `;
+      
+      // Auto-select yearly plan
+      const defaultPlan = plans.find(p => p.id === 'yearly') || plans[0];
+      selectExpiredSubPlan(defaultPlan.id);
+    } else {
+      el.innerHTML = '<div style="color:var(--error); text-align:center; padding:10px;">Failed to load plans</div>';
+    }
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--error); text-align:center; padding:10px;">Error loading plans</div>';
+  }
+}
+
+function selectExpiredSubPlan(planId) {
+  selectedExpiredSubPlanId = planId;
+  document.querySelectorAll('#expired-plans-container .plan-card').forEach(el => el.classList.remove('selected'));
+  const selectedCard = $('plan-expired-' + planId);
+  if (selectedCard) {
+    selectedCard.classList.add('selected');
+  }
+
+  const payBtn = $('btn-pay-expired-sub');
+  if (payBtn) {
+    payBtn.disabled = false;
+    const plans = S.subscriptionPlans || [
+      { id: 'monthly', name: 'Monthly', price: 999 },
+      { id: 'semiyearly', name: 'Semi-Yearly', price: 4999 },
+      { id: 'yearly', name: 'Yearly', price: 9999 }
+    ];
+    const plan = plans.find(p => p.id === planId) || { name: 'Plan', price: 0 };
+    payBtn.innerHTML = `💳 Pay ₹${plan.price} via Razorpay — Renew ${plan.name}`;
+  }
+}
+
+async function payExpiredSubscription() {
+  if (!selectedExpiredSubPlanId) return showToast('Please select a plan first', 'error');
+
+  showLoader('Creating payment order...');
+  try {
+    const r = await callServer('createSubscriptionOrder', selectedExpiredSubPlanId);
+    hideLoader();
+    if (!r.success) {
+      showToast(r.message || 'Failed to initialize subscription payment', 'error');
+      return;
+    }
+
+    const rzpData = r.data;
+    const options = {
+      "key": rzpData.keyId,
+      "amount": Math.round(rzpData.amount * 100),
+      "currency": rzpData.currency || "INR",
+      "name": "MenuSarthi Subscription",
+      "description": "Renewal of " + rzpData.planName + " Plan",
+      "order_id": rzpData.razorpayOrderId,
+      "handler": async function (response) {
+        showLoader('Processing subscription renewal...');
+        try {
+          const verifyRes = await callServer(
+            'verifySubscriptionPayment',
+            rzpData.planId,
+            response.razorpay_payment_id,
+            response.razorpay_order_id,
+            response.razorpay_signature
+          );
+          hideLoader();
+          if (verifyRes.success) {
+            showToast('Subscription renewed successfully! 🎉', 'success');
+            S.subscriptionStatus = verifyRes.data;
+            
+            // Re-render banner
+            renderSubscriptionBanner();
+            
+            // Remove overlays
+            const dashEl = $('admin-dashboard');
+            if (dashEl) dashEl.classList.remove('admin-expired-overlay');
+            
+            // If settings is open, reload it
+            if (S.currentView === 'admin') {
+              loadSubscriptionInSettings();
+            }
           } else {
             showToast(verifyRes.message || 'Verification failed', 'error');
           }
