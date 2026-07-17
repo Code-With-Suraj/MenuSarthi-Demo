@@ -3,7 +3,7 @@ const INIT_TABLE = urlParams.get('table') || '';
 const INIT_PAGE = urlParams.get('page') || 'customer';
 
 const SESSION_KEY='ms_session';const ADMIN_SESSION_KEY='ms_admin_session';const SESSION_TTL=2*60*60*1000;
-const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null};
+const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null,currentOrderDetails:null};
 function saveSession(u){try{localStorage.setItem(SESSION_KEY,JSON.stringify({user:u}))}catch(e){}}
 function loadSession(){try{const s=JSON.parse(localStorage.getItem(SESSION_KEY));if(s&&s.user){S.user=s.user;return true}clearSession()}catch(e){}return false}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY)}catch(e){};S.user=null}
@@ -490,6 +490,7 @@ async function pollStatus(orderId){
 }
 
 function updateTrackingUI(data){
+  S.currentOrderDetails = data;
   if (S.etaInterval) {
     clearInterval(S.etaInterval);
     S.etaInterval = null;
@@ -619,7 +620,8 @@ function updateTrackingUI(data){
         '<div class="payment-prompt-card glass mt-4" style="padding:20px; border: 1px solid var(--success); text-align: center; background: rgba(34,197,94,0.08)">' +
           '<div style="font-size: 2.2rem; margin-bottom: 8px;">🍽️😋</div>' +
           '<div style="font-size: 1.2rem; color: var(--success); font-weight: bold; margin-bottom: 6px;">Order Completed!</div>' +
-          '<p style="font-size: 0.85rem; color: var(--text2);">Hope you enjoyed your delicious meal! Thank you for dining with us. Visit again! ❤️</p>' +
+          '<p style="font-size: 0.85rem; color: var(--text2); margin-bottom: 16px;">Hope you enjoyed your delicious meal! Thank you for dining with us. Visit again! ❤️</p>' +
+          '<button class="btn btn-success btn-block" style="background: linear-gradient(135deg, var(--success), #2ed573); border: none; max-width: 260px; margin: 0 auto;" onclick="downloadReceipt(\'' + data.orderId + '\')">🧾 Download Receipt</button>' +
         '</div>';
     } else if (data.paymentStatus === 'Paid') {
       paymentPromptEl.innerHTML = 
@@ -887,7 +889,8 @@ function renderMyOrders(){
     const items=(o.items||[]).map(i=>i.name+' × '+i.qty).join(', ');
     const trackBtn = o.status!=='Completed'?'<button class="btn btn-primary btn-sm" onclick="S.currentOrder={orderId:\''+o.orderId+'\'};navigateTo(\'tracking\');startTracking(\''+o.orderId+'\')">Track Order</button>':'';
     const reorderBtn = '<button class="btn btn-secondary btn-sm" onclick="reorder(\''+encodeURIComponent(JSON.stringify(o.items))+'\')">🔁 Re-Order</button>';
-    return '<div class="order-history-item"><div class="oh-header"><span class="oh-id">'+o.orderId+'</span><span class="status-badge '+sc+'">'+o.status+'</span></div><div class="oh-details"><div>🕐 '+o.timestamp+'</div><div>📍 Table '+o.table+'</div><div>🍽️ '+items+'</div><div style="font-weight:600;margin-top:4px">Total: ₹'+o.total+'</div></div><div style="display:flex;gap:8px;margin-top:8px">'+trackBtn+reorderBtn+'</div></div>'
+    const receiptBtn = o.status==='Completed'?'<button class="btn btn-success btn-sm" style="background:var(--success);color:#fff;border:none" onclick="downloadReceipt(\''+o.orderId+'\')">🧾 Receipt</button>':'';
+    return '<div class="order-history-item"><div class="oh-header"><span class="oh-id">'+o.orderId+'</span><span class="status-badge '+sc+'">'+o.status+'</span></div><div class="oh-details"><div>🕐 '+o.timestamp+'</div><div>📍 Table '+o.table+'</div><div>🍽️ '+items+'</div><div style="font-weight:600;margin-top:4px">Total: ₹'+o.total+'</div></div><div style="display:flex;gap:8px;margin-top:8px">'+trackBtn+reorderBtn+receiptBtn+'</div></div>'
   }).join('')
 }
 
@@ -931,6 +934,380 @@ function reorder(encodedItems){
   }catch(e){
     showToast('Failed to reorder','error');
   }
+}
+
+async function downloadReceipt(orderId) {
+  let order = null;
+  
+  if (S.myOrders && S.myOrders.length) {
+    order = S.myOrders.find(o => o.orderId === orderId);
+  }
+  
+  if (!order && S.currentOrderDetails && S.currentOrderDetails.orderId === orderId) {
+    order = S.currentOrderDetails;
+  }
+  
+  if (!order) {
+    showLoader('Loading receipt...');
+    try {
+      const r = await callServer('getOrderStatus', orderId);
+      hideLoader();
+      if (r.success) {
+        order = r.data;
+      } else {
+        showToast('Receipt details not found', 'error');
+        return;
+      }
+    } catch(e) {
+      hideLoader();
+      showToast('Error loading receipt', 'error');
+      return;
+    }
+  }
+  
+  generateReceiptWindow(order);
+}
+
+function generateReceiptWindow(order) {
+  const printWindow = window.open('', '_blank', 'width=450,height=700');
+  if (!printWindow) {
+    showToast('Please allow pop-ups to print receipt', 'error');
+    return;
+  }
+  
+  const restaurantName = S.config.restaurantName || 'MenuSarthi';
+  const tagline = S.config.restaurantTagline || 'Thank you for dining with us!';
+  const logoUrl = S.config.logoUrl || '';
+  const gstEnabled = S.config.gstEnabled === true || S.config.gstEnabled === 'true';
+  const gstRate = parseFloat(S.config.gstRate) || 5;
+  const gstNumber = S.config.gstNumber || '';
+  
+  printWindow.document.title = 'Receipt - ' + order.orderId;
+  
+  const subtotal = (order.items || []).reduce((sum, it) => sum + (parseFloat(it.price) * parseInt(it.qty)), 0);
+  const gstAmount = gstEnabled ? Math.round(subtotal * gstRate / 100 * 100) / 100 : 0;
+  const cgstAmount = gstAmount / 2;
+  const sgstAmount = gstAmount / 2;
+  
+  const logoHtml = logoUrl 
+    ? `<img src="${logoUrl}" alt="Logo" style="width:60px;height:60px;border-radius:14px;object-fit:cover;margin-bottom:10px">`
+    : `<span style="font-size:3rem;margin-bottom:10px;display:inline-block">🍽️</span>`;
+    
+  const itemsHtml = (order.items || []).map(it => `
+    <tr>
+      <td style="padding: 8px 0; text-align: left; vertical-align: top;">
+        <span style="font-weight: 600; color: #1f2937;">${it.name}</span>
+      </td>
+      <td style="padding: 8px 0; text-align: center; vertical-align: top; color: #4b5563;">${it.qty}</td>
+      <td style="padding: 8px 0; text-align: right; vertical-align: top; color: #4b5563;">₹${parseFloat(it.price).toFixed(2)}</td>
+      <td style="padding: 8px 0; text-align: right; vertical-align: top; font-weight: 600; color: #1f2937;">₹${(parseFloat(it.price) * parseInt(it.qty)).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  let gstRowsHtml = '';
+  if (gstEnabled) {
+    gstRowsHtml = `
+      <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; color: #4b5563;">
+        <span>CGST (${(gstRate/2).toFixed(1)}%)</span>
+        <span>₹${cgstAmount.toFixed(2)}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; color: #4b5563;">
+        <span>SGST (${(gstRate/2).toFixed(1)}%)</span>
+        <span>₹${sgstAmount.toFixed(2)}</span>
+      </div>
+    `;
+  }
+  
+  const isPaid = order.paymentStatus === 'Paid';
+  const payStatusBadge = isPaid
+    ? `<span style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1.5px solid #10b981; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">PAID</span>`
+    : `<span style="background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1.5px solid #f59e0b; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">PENDING</span>`;
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Receipt - ${order.orderId}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap');
+        
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        
+        body {
+          font-family: 'Inter', sans-serif;
+          background: #f3f4f6;
+          color: #1f2937;
+          padding: 20px 10px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          min-height: 100vh;
+        }
+        
+        .no-print-header {
+          width: 100%;
+          max-width: 400px;
+          margin-bottom: 16px;
+          display: flex;
+          justify-content: center;
+        }
+        
+        .btn-print {
+          background: #ff5e14;
+          color: white;
+          border: none;
+          padding: 12px 24px;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.95rem;
+          font-weight: 700;
+          border-radius: 10px;
+          cursor: pointer;
+          box-shadow: 0 4px 14px rgba(255, 94, 20, 0.3);
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .btn-print:hover {
+          background: #e04f0f;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 18px rgba(255, 94, 20, 0.4);
+        }
+        
+        .receipt-card {
+          background: white;
+          width: 100%;
+          max-width: 400px;
+          border-radius: 20px;
+          padding: 28px 24px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+          border: 1px solid #e5e7eb;
+          position: relative;
+        }
+        
+        .receipt-header {
+          text-align: center;
+          margin-bottom: 24px;
+        }
+        
+        .restaurant-name {
+          font-family: 'Outfit', sans-serif;
+          font-size: 1.5rem;
+          font-weight: 800;
+          color: #111827;
+          margin-bottom: 4px;
+        }
+        
+        .restaurant-tagline {
+          font-size: 0.85rem;
+          color: #6b7280;
+          margin-bottom: 14px;
+        }
+        
+        .invoice-title {
+          display: inline-block;
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.75rem;
+          font-weight: 700;
+          letter-spacing: 1px;
+          background: #f3f4f6;
+          color: #374151;
+          padding: 4px 12px;
+          border-radius: 6px;
+          text-transform: uppercase;
+        }
+        
+        .meta-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          margin-bottom: 20px;
+          font-size: 0.82rem;
+          border-top: 1px dashed #e5e7eb;
+          border-bottom: 1px dashed #e5e7eb;
+          padding: 16px 0;
+        }
+        
+        .meta-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        
+        .meta-item .label {
+          color: #9ca3af;
+          font-weight: 500;
+        }
+        
+        .meta-item .value {
+          color: #374151;
+          font-weight: 600;
+        }
+        
+        .receipt-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 20px;
+          font-size: 0.85rem;
+        }
+        
+        .receipt-table th {
+          font-family: 'Outfit', sans-serif;
+          font-weight: 700;
+          color: #4b5563;
+          padding-bottom: 10px;
+          border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .summary-section {
+          border-top: 1px dashed #e5e7eb;
+          padding-top: 16px;
+          margin-bottom: 20px;
+        }
+        
+        .grand-total-row {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 10px;
+          padding-top: 10px;
+          border-top: 1.5px solid #111827;
+          font-family: 'Outfit', sans-serif;
+          font-size: 1.15rem;
+          font-weight: 800;
+          color: #111827;
+        }
+        
+        .receipt-footer {
+          text-align: center;
+          margin-top: 24px;
+          border-top: 1px dashed #e5e7eb;
+          padding-top: 20px;
+        }
+        
+        .status-wrapper {
+          margin-bottom: 16px;
+        }
+        
+        .thankyou-msg {
+          font-size: 0.85rem;
+          color: #6b7280;
+          margin-bottom: 12px;
+          font-style: italic;
+        }
+        
+        .powered-by {
+          font-size: 0.7rem;
+          color: #9ca3af;
+          font-weight: 500;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+        }
+        
+        @media print {
+          body {
+            background: white;
+            padding: 0;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .receipt-card {
+            box-shadow: none;
+            border: none;
+            padding: 0;
+            max-width: 100%;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="no-print no-print-header">
+        <button class="btn-print" onclick="window.print()">
+          🖨️ Print / Save as PDF
+        </button>
+      </div>
+      
+      <div class="receipt-card">
+        <div class="receipt-header">
+          ${logoHtml}
+          <div class="restaurant-name">${restaurantName}</div>
+          <div class="restaurant-tagline">${tagline}</div>
+          <div class="invoice-title">Tax Invoice</div>
+        </div>
+        
+        <div class="meta-grid">
+          <div class="meta-item">
+            <span class="label">Invoice No</span>
+            <span class="value">${order.orderId}</span>
+          </div>
+          <div class="meta-item">
+            <span class="label">Date & Time</span>
+            <span class="value">${order.timestamp}</span>
+          </div>
+          <div class="meta-item">
+            <span class="label">Table</span>
+            <span class="value">${order.table ? 'Table ' + order.table : 'Takeaway'}</span>
+          </div>
+          <div class="meta-item">
+            <span class="label">Customer</span>
+            <span class="value">${order.customerName || 'Guest'}</span>
+          </div>
+        </div>
+        
+        <table class="receipt-table">
+          <thead>
+            <tr>
+              <th style="text-align: left;">Item</th>
+              <th style="text-align: center; width: 40px;">Qty</th>
+              <th style="text-align: right; width: 80px;">Price</th>
+              <th style="text-align: right; width: 90px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+        
+        <div class="summary-section">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; color: #4b5563;">
+            <span>Subtotal</span>
+            <span>₹${subtotal.toFixed(2)}</span>
+          </div>
+          ${gstRowsHtml}
+          <div class="grand-total-row">
+            <span>Grand Total</span>
+            <span>₹${parseFloat(order.total).toFixed(2)}</span>
+          </div>
+        </div>
+        
+        <div class="receipt-footer">
+          <div class="status-wrapper">
+            ${payStatusBadge}
+          </div>
+          ${gstNumber ? `<div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 8px;">GSTIN: ${gstNumber}</div>` : ''}
+          <div class="thankyou-msg">Thank you for dining with us! Visit again.</div>
+          <div class="powered-by">Powered by MenuSarthi</div>
+        </div>
+      </div>
+      
+      <script>
+        window.addEventListener('load', function() {
+          setTimeout(function() {
+            window.print();
+          }, 600);
+        });
+      </script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
 }
 
 async function handleAdminLogin(){
@@ -1017,7 +1394,7 @@ async function loadFinancialReport() {
     // Render detailed table
     const tbody = $('reports-table-body');
     if (!r.data.orders.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text3)">No orders found in this period</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">No orders found in this period</td></tr>';
       return;
     }
 
@@ -1027,6 +1404,7 @@ async function loadFinancialReport() {
         <tr style="border-bottom: 1px solid var(--border); color: var(--text);">
           <td style="padding: 8px 4px; font-weight:600; color:var(--primary); font-size:0.75rem">${o.orderId}</td>
           <td style="padding: 8px 4px; color:var(--text2); font-size:0.75rem">${o.timestamp}</td>
+          <td style="padding: 8px 4px; color:var(--text2); font-size:0.75rem">${o.customerName}${o.customerPhone ? `<br><a href="tel:${o.customerPhone}" style="color:inherit;text-decoration:none;font-weight:600">📞 ${o.customerPhone}</a>` : ''}</td>
           <td style="padding: 8px 4px; color:var(--text2)">${o.tableNumber}</td>
           <td style="padding: 8px 4px; text-align:right">₹${o.subtotal.toFixed(2)}</td>
           <td style="padding: 8px 4px; text-align:right">₹${o.gstAmount.toFixed(2)}</td>
@@ -1165,7 +1543,7 @@ function renderAdminOrders(orders){
       payBadge = '<span class="status-badge status-received" style="margin-left:8px;font-weight:700">⏳ UNPAID</span>';
     }
     
-    return '<div class="admin-order '+sc+'"><div class="ao-top"><span class="ao-id">'+o.orderId+'</span><span class="ao-time">'+o.elapsed+'</span></div><div class="ao-meta"><span>📍 Table '+(o.table || 'Takeaway')+'</span><span>👤 '+o.customerName+'</span><span class="status-badge '+sc.toLowerCase()+'">'+o.status+'</span>'+payBadge+'</div><div class="ao-items">'+items+'</div>'+(o.specialInstructions?'<div class="ao-instructions">📝 '+o.specialInstructions+'</div>':'')+'<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700;color:var(--primary)">₹'+o.total+'</span><div class="ao-actions">'+btns+'</div></div></div>'
+    return '<div class="admin-order '+sc+'"><div class="ao-top"><span class="ao-id">'+o.orderId+'</span><span class="ao-time">'+o.elapsed+'</span></div><div class="ao-meta"><span>📍 Table '+(o.table || 'Takeaway')+'</span><span>👤 '+o.customerName+(o.customerPhone ? ' | 📞 <a href="tel:'+o.customerPhone+'" style="color:inherit;text-decoration:none">'+o.customerPhone+'</a>' : '')+'</span><span class="status-badge '+sc.toLowerCase()+'">'+o.status+'</span>'+payBadge+'</div><div class="ao-items">'+items+'</div>'+(o.specialInstructions?'<div class="ao-instructions">📝 '+o.specialInstructions+'</div>':'')+'<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700;color:var(--primary)">₹'+o.total+'</span><div class="ao-actions">'+btns+'</div></div></div>'
   }).join('')
 }
 
