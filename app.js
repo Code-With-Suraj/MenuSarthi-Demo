@@ -96,6 +96,10 @@ function _buildParams(action, args) {
       return { orderId: args[0], amount: args[1] };
     case 'verifyRazorpayPayment':
       return { orderId: args[0], razorpayPaymentId: args[1], razorpayOrderId: args[2], razorpaySignature: args[3] };
+    case 'createSubscriptionOrder':
+      return { planId: args[0] };
+    case 'verifySubscriptionPayment':
+      return { planId: args[0], razorpayPaymentId: args[1], razorpayOrderId: args[2], razorpaySignature: args[3] };
     case 'refundRazorpayPayment':
       return { orderId: args[0] };
     case 'reviseOrder':
@@ -786,6 +790,10 @@ function cancelPayment() {
 
 async function triggerRazorpayPayment() {
   if (!S.payingOrderId || !S.payingAmount) return;
+  if (!S.config || !S.config.razorpayEnabled) {
+    showToast('Online payment is not enabled by the restaurant. Please pay via UPI or Cash.', 'error');
+    return;
+  }
   showLoader('Initializing payment...');
   try {
     const r = await callServer('createRazorpayOrder', S.payingOrderId, S.payingAmount);
@@ -1722,6 +1730,11 @@ async function loadAdminSettings(){
       $('cfg-gst-enabled').checked=d.gstEnabled===true;
       $('cfg-gst-rate').value=d.gstRate||5;
       $('cfg-gst-number').value=d.gstNumber||'';
+      $('cfg-razorpay-enabled').checked=d.razorpayEnabled===true;
+      $('cfg-razorpay-key-id').value=d.razorpayKeyId||'';
+      $('cfg-razorpay-key-secret').value='';
+      
+      loadSubscriptionInSettings();
     }
   }catch(e){}
 }
@@ -1737,8 +1750,14 @@ async function saveAdminSettings(){
     ownerUpiName:$('cfg-upi-name').value,
     gstEnabled:$('cfg-gst-enabled').checked,
     gstRate:parseFloat($('cfg-gst-rate').value)||5,
-    gstNumber:$('cfg-gst-number').value
+    gstNumber:$('cfg-gst-number').value,
+    razorpayEnabled:$('cfg-razorpay-enabled').checked,
+    razorpayKeyId:$('cfg-razorpay-key-id').value
   };
+  const secret=$('cfg-razorpay-key-secret').value;
+  if(secret){
+    data.razorpayKeySecret=secret;
+  }
   showLoader('Saving...');
   try{
     const r=await callServer('updateAdminConfig',data);
@@ -1754,12 +1773,15 @@ async function saveAdminSettings(){
       S.config.gstEnabled=data.gstEnabled;
       S.config.gstRate=data.gstRate;
       S.config.gstNumber=data.gstNumber;
+      S.config.razorpayEnabled=data.razorpayEnabled;
+      S.config.razorpayKeyId=data.razorpayKeyId;
       document.title=data.restaurantName+' — Digital Menu';
       $('landing-name').textContent=data.restaurantName;
       $('landing-tagline').textContent=data.restaurantTagline;
       const logoEl=$('landing-logo');
       if(data.logoUrl){logoEl.innerHTML='<img src="'+data.logoUrl+'" alt="Logo" style="width:100%;height:100%;object-fit:cover;border-radius:28px">'}
       else{logoEl.innerHTML='🍽️'}
+      $('cfg-razorpay-key-secret').value='';
     }
     else showToast(r.message,'error');
   }catch(e){hideLoader();showToast('Failed','error')}
@@ -2389,6 +2411,18 @@ function downloadSingleQR(tableNum) {
 const WHATSAPP_RENEW_NUMBER = '918851666208';
 const WHATSAPP_RENEW_MSG = 'Hi MenuSarthi Team! I want to renew my restaurant subscription. Please help.';
 
+function openSubscriptionRenewal() {
+  switchAdminTab(document.querySelector('.admin-tab[data-tab="admin-settings-tab"]'), 'admin-settings-tab');
+  setTimeout(() => {
+    const el = $('cfg-sub-plans-grid');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.outline = '2px dashed var(--primary)';
+      setTimeout(() => { el.style.outline = 'none'; }, 2500);
+    }
+  }, 300);
+}
+
 /**
  * Renders subscription banner in admin dashboard
  * Shows warning (expiring soon) or expired banner
@@ -2408,12 +2442,16 @@ function renderSubscriptionBanner() {
         <div class="sub-banner-icon">🚨</div>
         <div class="sub-banner-title">Subscription Expired</div>
         <div class="sub-banner-desc">
-          Your MenuSarthi subscription has expired. Renew now to restore your digital menu and accept customer orders.
+          Your MenuSarthi subscription has expired. Renew now via Razorpay to instantly restore your digital menu.
         </div>
-        <a href="${waLink}" target="_blank" class="sub-renew-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18a8 8 0 01-4.29-1.239l-.307-.184-2.866.852.852-2.866-.184-.307A8 8 0 1112 20z"/></svg>
-          WhatsApp par Renew Karein
-        </a>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+          <button class="sub-renew-razorpay-btn" onclick="openSubscriptionRenewal()">
+            💳 Renew Subscription Online
+          </button>
+          <a href="${waLink}" target="_blank" class="sub-renew-whatsapp-link">
+            💬 Or renew manually via WhatsApp
+          </a>
+        </div>
         <div class="sub-expiry-info">
           <span>Expired: ${sub.expiryDate}</span>
           <span class="sub-plan-badge">${sub.plan} Plan</span>
@@ -2423,24 +2461,202 @@ function renderSubscriptionBanner() {
   } else if (sub.isExpiringSoon) {
     // WARNING BANNER (≤7 days remaining)
     container.innerHTML = `
-      <div class="subscription-warning">
-        <div class="sub-banner-icon">⚠️</div>
-        <div class="sub-banner-title">Subscription Expiring Soon</div>
-        <div class="sub-banner-desc">
-          Your ${sub.plan} subscription expires on <strong>${sub.expiryDate}</strong>. 
-          Renew now to avoid service interruption for your customers.
+      <div class="subscription-warning" style="background:rgba(251,191,36,0.06); border:1px solid rgba(251,191,36,0.3); border-radius:var(--radius); padding:20px; margin-bottom:20px; text-align:center;">
+        <div class="sub-banner-icon" style="font-size:1.8rem; margin-bottom:6px;">⚠️</div>
+        <div class="sub-banner-title" style="font-family:var(--font-head); font-weight:800; font-size:1.1rem; color:var(--warning); margin-bottom:6px;">Subscription Expiring Soon</div>
+        <div class="sub-banner-desc" style="font-size:0.85rem; color:var(--text2); margin-bottom:12px;">
+          Your ${sub.plan} subscription expires on <strong>${sub.expiryDate}</strong> (⏳ ${sub.daysRemaining} days remaining).
         </div>
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <span class="sub-banner-days">⏳ ${sub.daysRemaining} day${sub.daysRemaining !== 1 ? 's' : ''} remaining</span>
-          <a href="${waLink}" target="_blank" class="sub-renew-btn">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18a8 8 0 01-4.29-1.239l-.307-.184-2.866.852.852-2.866-.184-.307A8 8 0 1112 20z"/></svg>
-            Renew Now
+        <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+          <button class="sub-renew-razorpay-btn" onclick="openSubscriptionRenewal()">
+            💳 Renew Now
+          </button>
+          <a href="${waLink}" target="_blank" class="sub-renew-whatsapp-link" style="margin-top:4px;">
+            💬 Or renew via WhatsApp
           </a>
         </div>
       </div>
     `;
   } else {
     container.innerHTML = '';
+  }
+}
+
+let selectedSubPlanId = null;
+
+async function loadSubscriptionInSettings() {
+  const statusCard = $('cfg-sub-status-card');
+  const plansGrid = $('cfg-sub-plans-grid');
+  if (!statusCard || !plansGrid) return;
+
+  statusCard.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text3)">Loading subscription status...</div>';
+  plansGrid.innerHTML = '';
+
+  try {
+    const r = await callServer('getSubscriptionDetails');
+    if (r.success && r.data) {
+      const sub = r.data.subscription;
+      const plans = r.data.plans;
+
+      // Update S.subscriptionStatus just in case it updated
+      S.subscriptionStatus = sub;
+
+      // Render status card
+      const statusText = sub.isActive 
+        ? '<span style="color:var(--success); font-weight:bold">Active</span>' 
+        : '<span style="color:var(--error); font-weight:bold">Expired</span>';
+      
+      const expiryText = sub.isLifetime ? 'Lifetime Access' : (sub.expiryDate || 'N/A');
+      const daysText = sub.isLifetime ? 'Unlimited' : (sub.daysRemaining !== undefined ? sub.daysRemaining + ' days' : 'N/A');
+
+      statusCard.innerHTML = `
+        <div class="sub-status-card">
+          <div class="status-row">
+            <span class="status-label">Subscription Plan:</span>
+            <span class="status-value">${sub.plan || 'None'}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Status:</span>
+            <span class="status-value">${statusText}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Start Date:</span>
+            <span class="status-value">${sub.startDate || 'N/A'}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Expiry Date:</span>
+            <span class="status-value">${expiryText}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Days Remaining:</span>
+            <span class="status-value" style="color: ${sub.isExpiringSoon ? 'var(--warning)' : 'inherit'};">${daysText}</span>
+          </div>
+        </div>
+      `;
+
+      // Render plan cards
+      plansGrid.innerHTML = `
+        <div class="sub-plans-grid">
+          ${plans.map(p => {
+            const isCurrent = sub.plan && sub.plan.toLowerCase() === p.name.toLowerCase() && sub.isActive;
+            const cardClass = isCurrent ? 'plan-card active' : 'plan-card';
+            const savingsHtml = p.savings ? `<div class="plan-savings-badge">Save ${p.savings}</div>` : '';
+            const recClass = p.id === 'yearly' ? 'recommended' : '';
+            return `
+              <div class="${cardClass} ${recClass}" id="plan-${p.id}" onclick="selectSubPlan('${p.id}')">
+                <div class="plan-name">${p.name}</div>
+                <div class="plan-price">₹${p.price}</div>
+                <div class="plan-duration">${p.description}</div>
+                ${savingsHtml}
+              </div>
+            `;
+          }).join('')}
+        </div>
+        <button id="btn-pay-sub" class="btn btn-primary btn-block" style="margin-top:16px;" onclick="paySelectedSubscription()" disabled>
+          💳 Select a plan above to Renew
+        </button>
+      `;
+
+      // Pre-select yearly plan if not currently active
+      if (plans.length > 0) {
+        const defaultPlan = plans.find(p => p.id === 'yearly') || plans[0];
+        selectSubPlan(defaultPlan.id);
+      }
+    } else {
+      statusCard.innerHTML = '<div style="color:var(--error); text-align:center; padding:10px;">Failed to load subscription status</div>';
+    }
+  } catch (e) {
+    statusCard.innerHTML = '<div style="color:var(--error); text-align:center; padding:10px;">Error loading subscription details</div>';
+  }
+}
+
+function selectSubPlan(planId) {
+  selectedSubPlanId = planId;
+  document.querySelectorAll('.plan-card').forEach(el => el.classList.remove('selected'));
+  const selectedCard = $('plan-' + planId);
+  if (selectedCard) {
+    selectedCard.classList.add('selected');
+  }
+
+  const payBtn = $('btn-pay-sub');
+  if (payBtn) {
+    payBtn.disabled = false;
+    const planName = planId === 'monthly' ? 'Monthly' : planId === 'semiyearly' ? 'Semi-Yearly' : 'Yearly';
+    const planPrice = planId === 'monthly' ? '999' : planId === 'semiyearly' ? '4999' : '9999';
+    payBtn.innerHTML = `💳 Pay ₹${planPrice} via Razorpay — Renew ${planName}`;
+  }
+}
+
+async function paySelectedSubscription() {
+  if (!selectedSubPlanId) return showToast('Please select a plan first', 'error');
+
+  showLoader('Creating payment order...');
+  try {
+    const r = await callServer('createSubscriptionOrder', selectedSubPlanId);
+    hideLoader();
+    if (!r.success) {
+      showToast(r.message || 'Failed to initialize subscription payment', 'error');
+      return;
+    }
+
+    const rzpData = r.data;
+    const options = {
+      "key": rzpData.keyId,
+      "amount": Math.round(rzpData.amount * 100),
+      "currency": rzpData.currency || "INR",
+      "name": "MenuSarthi Subscription",
+      "description": "Renewal of " + rzpData.planName + " Plan",
+      "order_id": rzpData.razorpayOrderId,
+      "handler": async function (response) {
+        showLoader('Processing subscription renewal...');
+        try {
+          const verifyRes = await callServer(
+            'verifySubscriptionPayment',
+            rzpData.planId,
+            response.razorpay_payment_id,
+            response.razorpay_order_id,
+            response.razorpay_signature
+          );
+          hideLoader();
+          if (verifyRes.success) {
+            showToast('Subscription renewed successfully! 🎉', 'success');
+            S.subscriptionStatus = verifyRes.data;
+            
+            // Re-render banner
+            renderSubscriptionBanner();
+            
+            // Remove overlays
+            const dashEl = $('admin-dashboard');
+            if (dashEl) dashEl.classList.remove('admin-expired-overlay');
+            
+            // Reload settings
+            loadSubscriptionInSettings();
+          } else {
+            showToast(verifyRes.message || 'Verification failed', 'error');
+          }
+        } catch (e) {
+          hideLoader();
+          showToast('Error verifying subscription payment', 'error');
+        }
+      },
+      "prefill": {
+        "name": S.user ? S.user.name : "",
+        "contact": S.user ? S.user.phone : ""
+      },
+      "theme": {
+        "color": "#ff6b35"
+      },
+      "modal": {
+        "ondismiss": function() {
+          showToast('Payment cancelled', 'info');
+        }
+      }
+    };
+    const rzp = new Razorpay(options);
+    rzp.open();
+  } catch (e) {
+    hideLoader();
+    showToast('Failed to start checkout: ' + e.message, 'error');
   }
 }
 

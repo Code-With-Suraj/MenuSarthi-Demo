@@ -514,6 +514,43 @@
         </div>
       </div>
 
+      <!-- Razorpay Settings -->
+      <div class="gst-settings" style="margin-top:24px;">
+        <h4>💳 Razorpay Payment Gateway</h4>
+        <p style="font-size:0.8rem; color:var(--text3); margin-top:-8px; margin-bottom:16px;">Configure your Razorpay credentials to accept online payments from customers.</p>
+        <div class="gst-toggle-row" style="margin-bottom:16px">
+          <span>Enable Razorpay Payments</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="cfg-razorpay-enabled">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="gst-settings-grid">
+          <div class="input-group">
+            <label>Razorpay Key ID</label>
+            <input type="text" id="cfg-razorpay-key-id" placeholder="rzp_live_...">
+          </div>
+          <div class="input-group">
+            <label>Razorpay Key Secret</label>
+            <input type="password" id="cfg-razorpay-key-secret" placeholder="••••••••">
+          </div>
+        </div>
+        <div style="font-size:0.75rem; color:var(--text3); margin-top:8px;">
+          🔗 <a href="https://dashboard.razorpay.com/app/keys" target="_blank" style="color:var(--primary); text-decoration:none; font-weight:600;">Get your keys from Razorpay Dashboard</a>
+        </div>
+      </div>
+
+      <!-- Subscription Settings -->
+      <div class="gst-settings" style="margin-top:24px; border-top:1px solid var(--border); padding-top:20px;">
+        <h4>📋 Subscription Management</h4>
+        <div id="cfg-sub-status-card">
+          <!-- Current status card filled by JS -->
+        </div>
+        <div id="cfg-sub-plans-grid" style="margin-top:16px;">
+          <!-- Plan selection cards filled by JS -->
+        </div>
+      </div>
+
       <div class="input-group" style="margin-top:20px">
         <label>New Admin Password (leave blank to keep current)</label>
         <input type="password" id="cfg-password" placeholder="New password">
