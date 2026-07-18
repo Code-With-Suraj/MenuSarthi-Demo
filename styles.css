@@ -318,7 +318,7 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   letter-spacing: 0.01em;
 }
 
-.input-group input, .input-group textarea, .input-group select {
+.input-group input:not([type="checkbox"]), .input-group textarea, .input-group select {
   width: 100%;
   padding: 14px 16px;
   background: var(--surface);
@@ -333,7 +333,7 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   -webkit-backdrop-filter: blur(10px);
 }
 
-.input-group input:focus, .input-group textarea:focus, .input-group select:focus {
+.input-group input:not([type="checkbox"]):focus, .input-group textarea:focus, .input-group select:focus {
   border-color: var(--primary);
   background: rgba(255, 255, 255, 0.05);
   box-shadow: 0 0 15px rgba(255, 94, 20, 0.25);
@@ -4158,4 +4158,58 @@ h4 { font-size: 1.05rem; font-weight: 600; }
 @keyframes pulseComboHint {
   0% { border-color: rgba(255, 107, 53, 0.2); }
   100% { border-color: rgba(255, 107, 53, 0.5); box-shadow: 0 4px 20px rgba(255, 107, 53, 0.15); }
+}
+
+/* Custom styling for Combo Items Checklist inside Admin Dashboard */
+.combo-items-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px !important;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.combo-items-checklist label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-size: 0.85rem !important;
+  color: var(--text2) !important;
+  margin-bottom: 0 !important;
+  cursor: pointer !important;
+  padding: 6px 8px !important;
+  border-radius: var(--radius-xs) !important;
+  transition: background-color 0.2s ease !important;
+  user-select: none !important;
+}
+
+.combo-items-checklist label:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: var(--text) !important;
+}
+
+.combo-items-checklist input[type="checkbox"] {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  margin: 0 !important;
+  accent-color: var(--primary) !important;
+  cursor: pointer !important;
+}
+
+/* Desktop Responsiveness for Modals */
+@media (min-width: 768px) {
+  .modal {
+    max-width: 500px !important;
+    padding: 32px 30px !important;
+  }
+  
+  .combo-items-checklist {
+    max-height: 280px !important; /* Larger display on desktop screens */
+  }
 }
