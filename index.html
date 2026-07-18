@@ -581,6 +581,36 @@
         </div>
       </div>
 
+      <!-- Payment Collection Timing -->
+      <div class="gst-settings" style="margin-top:24px;">
+        <h4>⏰ Payment Collection Timing</h4>
+        <p style="font-size:0.8rem; color:var(--text3); margin-top:-8px; margin-bottom:16px;">Choose when to collect payment from your customers. This affects the customer ordering experience.</p>
+        
+        <div class="payment-timing-selector" id="payment-timing-selector">
+          <!-- Prepaid Option -->
+          <div class="payment-timing-card active" data-timing="prepaid" id="pt-card-prepaid" onclick="selectPaymentTiming('prepaid')">
+            <div class="pt-card-icon">💳</div>
+            <div class="pt-card-content">
+              <div class="pt-card-title">Pay Before Order</div>
+              <div class="pt-card-desc">Customer pays immediately after placing order. Food preparation starts after payment confirmation.</div>
+              <div class="pt-card-badge">Recommended for Online Orders</div>
+            </div>
+            <div class="pt-card-check" id="pt-check-prepaid">✅</div>
+          </div>
+          <!-- Postpaid Option -->
+          <div class="payment-timing-card" data-timing="postpaid" id="pt-card-postpaid" onclick="selectPaymentTiming('postpaid')">
+            <div class="pt-card-icon">🍽️</div>
+            <div class="pt-card-content">
+              <div class="pt-card-title">Pay After Dining</div>
+              <div class="pt-card-desc">Customer places order freely. Payment is collected after they finish dining — traditional dine-in style.</div>
+              <div class="pt-card-badge">Best for Dine-In Restaurants</div>
+            </div>
+            <div class="pt-card-check" id="pt-check-postpaid" style="opacity:0">✅</div>
+          </div>
+        </div>
+        <input type="hidden" id="cfg-payment-timing" value="prepaid">
+      </div>
+
       <!-- Subscription Settings -->
       <div class="gst-settings" style="margin-top:24px; border-top:1px solid var(--border); padding-top:20px;">
         <h4>📋 Subscription Management</h4>

@@ -3616,3 +3616,130 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   flex-direction: column;
   gap: 10px;
 }
+
+/* ===== PAYMENT TIMING SELECTOR ===== */
+.payment-timing-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.payment-timing-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.payment-timing-card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: var(--card-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.payment-timing-card.active {
+  border-color: var(--primary);
+  background: rgba(255, 94, 20, 0.06);
+  box-shadow: 0 0 20px rgba(255, 94, 20, 0.15), 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.payment-timing-card.active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 94, 20, 0.05) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.pt-card-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  transition: all 0.3s ease;
+}
+
+.payment-timing-card.active .pt-card-icon {
+  background: rgba(255, 94, 20, 0.1);
+  border-color: rgba(255, 94, 20, 0.3);
+  box-shadow: 0 0 12px rgba(255, 94, 20, 0.15);
+}
+
+.pt-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.pt-card-title {
+  font-family: var(--font-head);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+
+.payment-timing-card.active .pt-card-title {
+  color: var(--primary);
+}
+
+.pt-card-desc {
+  font-size: 0.78rem;
+  color: var(--text3);
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+
+.pt-card-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text3);
+  font-family: var(--font-head);
+}
+
+.payment-timing-card.active .pt-card-badge {
+  background: rgba(255, 94, 20, 0.08);
+  border-color: rgba(255, 94, 20, 0.2);
+  color: var(--primary);
+}
+
+.pt-card-check {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  transform: scale(1);
+}
+
+.payment-timing-card:not(.active) .pt-card-check {
+  opacity: 0 !important;
+  transform: scale(0.5);
+}
+
+.payment-timing-card.active .pt-card-check {
+  opacity: 1 !important;
+  transform: scale(1);
+}

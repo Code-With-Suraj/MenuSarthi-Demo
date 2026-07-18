@@ -515,8 +515,17 @@ async function submitOrder(){
       S.currentOrder=r.data;
       S.cart=[];
       updateCartBadge();
-      showToast('Order placed! Proceeding to payment...', 'success');
-      openPaymentPage(r.data.orderId, r.data.total);
+      
+      // Check payment timing mode
+      const isPostpaid = S.config && S.config.paymentTiming === 'postpaid';
+      if (isPostpaid) {
+        showToast('Order placed successfully! 🎉', 'success');
+        navigateTo('tracking');
+        startTracking(r.data.orderId);
+      } else {
+        showToast('Order placed! Proceeding to payment...', 'success');
+        openPaymentPage(r.data.orderId, r.data.total);
+      }
     }
     else showToast(r.message,'error');
   }catch(e){hideLoader();showToast('Order failed','error')}
@@ -661,6 +670,7 @@ function updateTrackingUI(data){
 
   // Render payment prompt
   const paymentPromptEl = $('payment-prompt-container');
+  const isPostpaidMode = S.config && S.config.paymentTiming === 'postpaid';
   if (paymentPromptEl) {
     if (data.status === 'Completed') {
       paymentPromptEl.innerHTML = 
@@ -682,8 +692,16 @@ function updateTrackingUI(data){
           '<div style="font-size: 1.2rem; color: var(--primary); font-weight: bold; margin-bottom: 4px;">💰 Order Refunded</div>' +
           '<p style="font-size: 0.8rem; color: var(--text2);">This order has been refunded. Amount will be credited back via Razorpay.</p>' +
         '</div>';
+    } else if (isPostpaidMode) {
+      // POSTPAID MODE: No payment prompt — show dine-in message
+      paymentPromptEl.innerHTML = 
+        '<div class="payment-prompt-card glass mt-4" style="padding:18px; border: 1px solid rgba(251, 191, 36, 0.3); text-align: center; background: rgba(251, 191, 36, 0.06)">' +
+          '<div style="font-size: 1.8rem; margin-bottom: 8px;">🍽️</div>' +
+          '<div style="font-size: 1.05rem; color: var(--secondary); font-weight: bold; margin-bottom: 6px;">Pay After Dining</div>' +
+          '<p style="font-size: 0.82rem; color: var(--text2); line-height: 1.5;">Enjoy your meal! Payment of <strong>₹' + data.total + '</strong> will be collected at the counter after you finish dining.</p>' +
+        '</div>';
     } else {
-      // Payment Pending
+      // PREPAID MODE: Payment Pending
       const outstanding = Math.max(0, Math.round((data.total - (data.amountPaid || 0)) * 100) / 100);
       if (outstanding <= 0 && data.paymentStatus !== 'Paid') {
         paymentPromptEl.innerHTML = 
@@ -1844,9 +1862,23 @@ async function loadAdminSettings(){
       $('cfg-razorpay-key-id').value=d.razorpayKeyId||'';
       $('cfg-razorpay-key-secret').value='';
       
+      // Payment timing
+      const timing = d.paymentTiming || 'prepaid';
+      selectPaymentTiming(timing);
+      
       loadSubscriptionInSettings();
     }
   }catch(e){}
+}
+
+function selectPaymentTiming(mode) {
+  $('cfg-payment-timing').value = mode;
+  const prepaidCard = $('pt-card-prepaid');
+  const postpaidCard = $('pt-card-postpaid');
+  if (prepaidCard && postpaidCard) {
+    prepaidCard.classList.toggle('active', mode === 'prepaid');
+    postpaidCard.classList.toggle('active', mode === 'postpaid');
+  }
 }
 
 async function saveAdminSettings(){
@@ -1862,7 +1894,8 @@ async function saveAdminSettings(){
     gstRate:parseFloat($('cfg-gst-rate').value)||5,
     gstNumber:$('cfg-gst-number').value,
     razorpayEnabled:$('cfg-razorpay-enabled').checked,
-    razorpayKeyId:$('cfg-razorpay-key-id').value
+    razorpayKeyId:$('cfg-razorpay-key-id').value,
+    paymentTiming:$('cfg-payment-timing').value||'prepaid'
   };
   const secret=$('cfg-razorpay-key-secret').value;
   if(secret){
@@ -1885,6 +1918,7 @@ async function saveAdminSettings(){
       S.config.gstNumber=data.gstNumber;
       S.config.razorpayEnabled=data.razorpayEnabled;
       S.config.razorpayKeyId=data.razorpayKeyId;
+      S.config.paymentTiming=data.paymentTiming;
       document.title=data.restaurantName+' — Digital Menu';
       $('landing-name').textContent=data.restaurantName;
       $('landing-tagline').textContent=data.restaurantTagline;
