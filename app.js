@@ -1865,6 +1865,31 @@ function renderAdminCombos() {
   }).join('');
 }
 
+function filterComboChecklistItems() {
+  const query = ($('combo-items-search') ? $('combo-items-search').value : '').toLowerCase().trim();
+  const checklist = document.querySelector('.combo-items-checklist');
+  if (!checklist) return;
+  const labels = checklist.querySelectorAll('label');
+  const headers = checklist.querySelectorAll('.checklist-cat-header');
+  
+  const catVisible = {};
+  
+  labels.forEach(label => {
+    const itemName = (label.getAttribute('data-item-name') || '').toLowerCase();
+    const itemCat = label.getAttribute('data-item-category') || '';
+    const matches = itemName.includes(query);
+    label.style.setProperty('display', matches ? 'flex' : 'none', 'important');
+    if (matches) {
+      catVisible[itemCat] = true;
+    }
+  });
+  
+  headers.forEach(hdr => {
+    const cat = hdr.getAttribute('data-category') || '';
+    hdr.style.display = catVisible[cat] ? 'block' : 'none';
+  });
+}
+
 function getMenuListCheckboxes(selectedIds = []) {
   const items = S.adminMenu || [];
   if (!items.length) return '<p style="color:var(--text3);font-size:0.8rem">No menu items found. Please add menu items first.</p>';
@@ -1875,13 +1900,20 @@ function getMenuListCheckboxes(selectedIds = []) {
     groups[it.category].push(it);
   });
   
-  let html = '<div class="combo-items-checklist" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);padding:10px;border-radius:var(--radius-sm);background:var(--bg2)">';
+  let html = `
+    <div style="margin-bottom: 8px;">
+      <input type="text" id="combo-items-search" placeholder="🔍 Search menu items..." oninput="filterComboChecklistItems()" style="width:100%; padding: 8px 12px; font-size: 0.82rem; border-radius: var(--radius-xs); border: 1px solid var(--border); background: var(--surface); color: var(--text); outline: none;">
+    </div>
+    <div class="combo-items-checklist">
+  `;
   for (const cat in groups) {
-    html += `<div style="font-weight:bold;font-size:0.75rem;color:var(--primary);margin:6px 0 4px 0">${cat}</div>`;
+    const cleanCat = cat.replace(/"/g, '&quot;');
+    html += `<div class="checklist-cat-header" data-category="${cleanCat}" style="font-weight:bold;font-size:0.75rem;color:var(--primary);margin:6px 0 4px 0">${cat}</div>`;
     groups[cat].forEach(it => {
       const checked = selectedIds.includes(it.id) ? 'checked' : '';
+      const cleanName = it.name.replace(/"/g, '&quot;');
       html += `
-        <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;margin-bottom:4px;cursor:pointer">
+        <label data-item-name="${cleanName}" data-item-category="${cleanCat}">
           <input type="checkbox" class="combo-item-chk" value="${it.id}" ${checked}>
           <span>${it.name} (₹${it.price})</span>
         </label>
@@ -1899,23 +1931,27 @@ function showAddComboModal() {
       <h3>Add Custom Combo / Bundle</h3>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-    <div class="input-group">
-      <label>Combo Name</label>
-      <input id="co-name" placeholder="e.g. Burger + Fries + Coke Combo">
+    <div class="modal-body-scrollable" style="max-height:60vh; overflow-y:auto; padding-right:6px; margin-bottom:16px;">
+      <div class="input-group">
+        <label>Combo Name</label>
+        <input id="co-name" placeholder="e.g. Burger + Fries + Coke Combo">
+      </div>
+      <div class="input-group">
+        <label>Combo Price (₹)</label>
+        <input id="co-price" type="number" placeholder="0">
+      </div>
+      <div class="input-group" style="margin-bottom:16px;">
+        <label>Select Included Items</label>
+        ${checklistHtml}
+      </div>
+      <div class="input-group" style="margin-bottom:0;">
+        <label>Image URL (optional)</label>
+        <input id="co-img" placeholder="https://...">
+      </div>
     </div>
-    <div class="input-group">
-      <label>Combo Price (₹)</label>
-      <input id="co-price" type="number" placeholder="0">
+    <div class="modal-footer" style="padding-top:12px; border-top:1px solid var(--border)">
+      <button class="btn btn-primary btn-block" onclick="saveNewCombo()">Create Combo</button>
     </div>
-    <div class="input-group">
-      <label>Select Included Items</label>
-      ${checklistHtml}
-    </div>
-    <div class="input-group">
-      <label>Image URL (optional)</label>
-      <input id="co-img" placeholder="https://...">
-    </div>
-    <button class="btn btn-primary btn-block" onclick="saveNewCombo()">Create Combo</button>
   `;
   $('modal-content').innerHTML = html;
   $('modal-overlay').classList.add('active');
@@ -1930,23 +1966,27 @@ function showEditComboModal(id, encoded) {
       <h3>Edit Combo</h3>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-    <div class="input-group">
-      <label>Combo Name</label>
-      <input id="co-name" value="${combo.name || ''}" placeholder="Combo name">
+    <div class="modal-body-scrollable" style="max-height:60vh; overflow-y:auto; padding-right:6px; margin-bottom:16px;">
+      <div class="input-group">
+        <label>Combo Name</label>
+        <input id="co-name" value="${combo.name || ''}" placeholder="Combo name">
+      </div>
+      <div class="input-group">
+        <label>Combo Price (₹)</label>
+        <input id="co-price" type="number" value="${combo.price || ''}" placeholder="0">
+      </div>
+      <div class="input-group" style="margin-bottom:16px;">
+        <label>Select Included Items</label>
+        ${checklistHtml}
+      </div>
+      <div class="input-group" style="margin-bottom:0;">
+        <label>Image URL</label>
+        <input id="co-img" value="${combo.image || ''}" placeholder="https://...">
+      </div>
     </div>
-    <div class="input-group">
-      <label>Combo Price (₹)</label>
-      <input id="co-price" type="number" value="${combo.price || ''}" placeholder="0">
+    <div class="modal-footer" style="padding-top:12px; border-top:1px solid var(--border)">
+      <button class="btn btn-primary btn-block" onclick="saveEditCombo('${id}')">Save Changes</button>
     </div>
-    <div class="input-group">
-      <label>Select Included Items</label>
-      ${checklistHtml}
-    </div>
-    <div class="input-group">
-      <label>Image URL</label>
-      <input id="co-img" value="${combo.image || ''}" placeholder="https://...">
-    </div>
-    <button class="btn btn-primary btn-block" onclick="saveEditCombo('${id}')">Save Changes</button>
   `;
   $('modal-content').innerHTML = html;
   $('modal-overlay').classList.add('active');
