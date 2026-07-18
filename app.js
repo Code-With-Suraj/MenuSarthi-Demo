@@ -473,7 +473,8 @@ function showUpsellModal(item, combos, addons) {
           <div class="upsell-card-info">
             <div>
               <div class="upsell-card-name">Upgrade to ${c.name}</div>
-              <div class="upsell-card-desc">Includes: ${c.includedNames || 'Delicious combination'}</div>
+              ${c.description ? `<div class="upsell-card-desc" style="font-weight: 600; color: var(--text2); margin-bottom: 2px;">${c.description}</div>` : ''}
+              <div class="upsell-card-desc" style="font-style: italic;">Includes: ${c.includedNames || 'Delicious combination'}</div>
             </div>
             <div class="upsell-card-footer">
               <span class="upsell-card-price">₹${c.price}</span>
@@ -724,7 +725,10 @@ async function loadCartAddOns(){
           <div class="addon-card combo-addon-card" style="border: 1px solid var(--primary); background: rgba(255, 107, 53, 0.04); min-width: 160px; text-align: center;">
             <div class="addon-card-img">${imgHtml}</div>
             <div class="ac-name" style="font-weight: 700; color: var(--primary);">${c.name}</div>
-            <div class="ac-desc" style="font-size: 0.65rem; color: var(--text3); margin-bottom: 6px; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.includedNames || ''}</div>
+            <div class="ac-desc" style="font-size: 0.68rem; color: var(--text3); margin-bottom: 8px; padding: 0 4px; line-height: 1.3; min-height: 38px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;" title="${c.includedNames || ''}">
+              ${c.description ? `<span style="font-weight: 700; color: var(--text2); display: block; margin-bottom: 2px;">${c.description}</span>` : ''}
+              <span style="font-style: italic;">Includes: ${c.includedNames || ''}</span>
+            </div>
             <div class="ac-price">₹${c.price}</div>
             <button class="ac-add" style="background: var(--primary-gradient); color: #fff; width: 100%; border: none; padding: 6px; border-radius: 4px; cursor: pointer;" onclick="addComboToCart('${c.id}'); renderCart();">+ COMBO</button>
           </div>
