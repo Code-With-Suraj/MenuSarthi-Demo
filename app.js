@@ -3734,8 +3734,8 @@ function applyBootstrapData(d) {
   if (d.addOns) S.adminAddons = d.addOns;
   
   if (d.menu) {
-    S.menu = d.menu;
-    S.categories = [...new Set(d.menu.map(it => it.category))];
+    S.menu = d.menu.items || {};
+    S.categories = d.menu.categories || [];
   }
   
   const config = S.config || {};
