@@ -3,7 +3,98 @@ const INIT_TABLE = urlParams.get('table') || '';
 const INIT_PAGE = urlParams.get('page') || 'customer';
 
 const SESSION_KEY='ms_session';const ADMIN_SESSION_KEY='ms_admin_session';const SESSION_TTL=2*60*60*1000;
-const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null,currentOrderDetails:null};
+const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null,currentOrderDetails:null,combos:[]};
+
+// ===== CLIENT-SIDE DATA CACHE (BOOTSTRAP LOADING & OFFLINE RESILIENCY) =====
+const DataCache = {
+  get: function(key) {
+    try {
+      const data = localStorage.getItem('ms_cache_' + key);
+      return data ? JSON.parse(data) : null;
+    } catch(e) { return null; }
+  },
+  set: function(key, val) {
+    try {
+      localStorage.setItem('ms_cache_' + key, JSON.stringify(val));
+    } catch(e) {}
+  },
+  clear: function(key) {
+    try {
+      localStorage.removeItem('ms_cache_' + key);
+    } catch(e) {}
+  }
+};
+
+// ===== NETWORK MONITORING & RETRY QUEUE =====
+let isOffline = !navigator.onLine;
+let offlineQueue = [];
+
+const NetworkMonitor = {
+  init: function() {
+    window.addEventListener('online', () => this.handleNetworkChange(true));
+    window.addEventListener('offline', () => this.handleNetworkChange(false));
+    this.updateBanner();
+  },
+  handleNetworkChange: function(online) {
+    isOffline = !online;
+    this.updateBanner();
+    if (online) {
+      showToast('You are back online! Syncing data...', 'success');
+      this.processQueue();
+    } else {
+      showToast('Connection lost. Working in offline mode.', 'warning');
+    }
+  },
+  updateBanner: function() {
+    const banner = document.getElementById('network-banner');
+    if (banner) {
+      if (isOffline) {
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+  },
+  enqueue: function(action, params, resolve, reject) {
+    offlineQueue.push({ action, params, resolve, reject });
+    showToast('Working Offline — Action queued for sync', 'info');
+  },
+  processQueue: async function() {
+    if (offlineQueue.length === 0) return;
+    const queue = [...offlineQueue];
+    offlineQueue = [];
+    for (const task of queue) {
+      try {
+        const res = await callServer(task.action, ...task.params);
+        task.resolve(res);
+      } catch(e) {
+        if (isOffline) {
+          offlineQueue.push(task); // Re-queue if still offline
+        } else {
+          task.reject(e);
+        }
+      }
+    }
+  }
+};
+
+async function retryNetworkConnection() {
+  showLoader('Checking connection...');
+  // Force check online state
+  if (navigator.onLine) {
+    isOffline = false;
+    NetworkMonitor.handleNetworkChange(true);
+    // Reload bootstrap data to ensure UI sync
+    await bootstrapApp();
+  } else {
+    showToast('Still offline. Please check your internet connection.', 'error');
+  }
+  hideLoader();
+}
+
+// Call NetworkMonitor init on script load
+setTimeout(() => NetworkMonitor.init(), 100);
+
 function saveSession(u){try{localStorage.setItem(SESSION_KEY,JSON.stringify({user:u}))}catch(e){}}
 function loadSession(){try{const s=JSON.parse(localStorage.getItem(SESSION_KEY));if(s&&s.user){S.user=s.user;return true}clearSession()}catch(e){}return false}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY)}catch(e){};S.user=null}
@@ -32,6 +123,27 @@ function checkAdminSessionExpiry(){try{const s=JSON.parse(localStorage.getItem(A
 
 
 async function callServer(action, ...args) {
+  if (isOffline) {
+    // If it's a read query, return from Cache if available
+    if (['getBootstrapData', 'getMenuData', 'getInitData', 'getCombosData', 'getAllAddOns'].includes(action)) {
+      const cached = DataCache.get(action);
+      if (cached) {
+        console.log('Serving cached data for action:', action);
+        return cached;
+      }
+    }
+    
+    // If it's a critical customer action, queue it in NetworkMonitor
+    if (['placeOrder', 'registerUser', 'loginUser', 'updateExistingOrder', 'reviseOrder'].includes(action)) {
+      return new Promise((resolve, reject) => {
+        NetworkMonitor.enqueue(action, args, resolve, reject);
+      });
+    }
+    
+    showToast('Offline Mode: Cannot connect to server', 'error');
+    throw new Error('Offline: Server connection not available');
+  }
+
   if (!CONFIG.GAS_API_URL) {
     showToast("Backend API URL is not configured. Please set CONFIG.GAS_API_URL in config.js.", "error");
     throw new Error("GAS_API_URL not configured");
@@ -52,9 +164,24 @@ async function callServer(action, ...args) {
       throw new Error('HTTP error ' + response.status);
     }
     
-    return await response.json();
+    const res = await response.json();
+    
+    // Save to client-side cache if successful read action
+    if (res && res.success && ['getBootstrapData', 'getMenuData', 'getInitData', 'getCombosData', 'getAllAddOns'].includes(action)) {
+      DataCache.set(action, res);
+    }
+    
+    return res;
   } catch (e) {
     console.error('API call failed:', e);
+    // On slow network/fetch failure, try fallback to cache for read queries
+    if (['getBootstrapData', 'getMenuData', 'getInitData', 'getCombosData', 'getAllAddOns'].includes(action)) {
+      const cached = DataCache.get(action);
+      if (cached) {
+        console.warn('Fallback to cache due to API error:', e);
+        return cached;
+      }
+    }
     throw e;
   }
 }
@@ -69,6 +196,8 @@ function _buildParams(action, args) {
     case 'addAddOn':
     case 'updateAddOn':
     case 'updateAdminConfig':
+    case 'addCombo':
+    case 'updateCombo':
       return args[0] || {};
     case 'validateUserSession':
       return { phone: args[0] };
@@ -92,6 +221,8 @@ function _buildParams(action, args) {
       return { addOnId: args[0] };
     case 'deleteOrder':
       return { orderId: args[0] };
+    case 'deleteCombo':
+      return { comboId: args[0] };
     case 'updateOrderStatus':
       return { orderId: args[0], status: args[1], etaMinutes: args[2] };
     case 'updateOrderPaymentStatus':
@@ -269,12 +400,27 @@ function findMenuItem(id){for(const cat of S.categories){const it=(S.menu[cat]||
 function addToCart(id){
   const item=findMenuItem(id);if(!item)return;
   if(item.portions&&item.portions.length>0){showPortionModal(item);return}
+  
+  // Smart Upselling Touchpoint 2: Check for matching combos or linked add-ons before adding
+  const matchingCombos = (S.combos || []).filter(c => c.available && c.includedItems && c.includedItems.split(',').map(s=>s.trim()).includes(id));
+  const matchingAddons = (S.adminAddons || []).filter(a => a.available && a.linkedItems && a.linkedItems.split(',').map(s=>s.trim()).includes(id));
+  
+  if ((matchingCombos.length > 0 || matchingAddons.length > 0) && !S.cart.some(c => c.id === id)) {
+    showUpsellModal(item, matchingCombos, matchingAddons);
+    return;
+  }
+  
+  addStandardToCart(id);
+}
+
+function addStandardToCart(id){
+  const item=findMenuItem(id);if(!item)return;
   const existing=S.cart.find(c=>c.id===id);
   if(existing)existing.qty++;
   else S.cart.push({id:item.id,name:item.name,price:item.price,qty:1,type:item.type,portion:''});
   updateCartBadge();
   const active=document.querySelector('.cat-tab.active');if(active)renderMenuItems(active.textContent);
-  showToast(item.name+' added','success')
+  showToast(item.name+' added','success');
 }
 
 function showPortionModal(item){
@@ -299,6 +445,115 @@ function addWithPortion(id,portion,price,type){
   updateCartBadge();closePortionModal();
   const active=document.querySelector('.cat-tab.active');if(active)renderMenuItems(active.textContent);
   showToast(item.name+' ('+portion+') added','success');
+}
+
+// ===== SMART CHECKOUT UPSELLING MODAL =====
+function showUpsellModal(item, combos, addons) {
+  const sheet = $('upsell-sheet');
+  const overlay = $('upsell-overlay');
+  if (!sheet || !overlay) return;
+  
+  let html = `
+    <div class="portion-handle"></div>
+    <div class="upsell-title-container">
+      <div class="upsell-title">✨ Make it a Feast!</div>
+      <div class="upsell-subtitle">Specially curated deals for your selection</div>
+    </div>
+    <div class="upsell-grid">
+  `;
+  
+  // 1. Render Combos
+  if (combos.length > 0) {
+    combos.forEach(c => {
+      const img = c.image ? `<img src="${c.image}" alt="${c.name}" loading="lazy">` : '<span style="font-size: 2.2rem">🍱</span>';
+      html += `
+        <div class="upsell-card" onclick="addComboToCart('${c.id}'); closeUpsellModal();">
+          <span class="upsell-card-tag">🔥 Best Deal</span>
+          <div class="upsell-card-img">${img}</div>
+          <div class="upsell-card-info">
+            <div>
+              <div class="upsell-card-name">Upgrade to ${c.name}</div>
+              <div class="upsell-card-desc">Includes: ${c.includedNames || 'Delicious combination'}</div>
+            </div>
+            <div class="upsell-card-footer">
+              <span class="upsell-card-price">₹${c.price}</span>
+              <button class="upsell-add-btn">Upgrade</button>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+  }
+  
+  // 2. Render Add-ons
+  if (addons.length > 0) {
+    addons.forEach(a => {
+      const img = a.image ? `<img src="${a.image}" alt="${a.name}" loading="lazy">` : '<span style="font-size: 2.2rem">🍛</span>';
+      html += `
+        <div class="upsell-card" onclick="addAddOnToCart('${a.id}', '${a.name.replace(/'/g,"\\'")}', ${a.price}, '${a.type}'); addStandardToCart('${item.id}'); closeUpsellModal();">
+          <span class="upsell-card-tag" style="background:linear-gradient(135deg,#2ecc71,#27ae60); color:#fff">Extra</span>
+          <div class="upsell-card-img">${img}</div>
+          <div class="upsell-card-info">
+            <div>
+              <div class="upsell-card-name">Add ${a.name}</div>
+              <div class="upsell-card-desc">Tastes best with ${item.name}!</div>
+            </div>
+            <div class="upsell-card-footer">
+              <span class="upsell-card-price">+ ₹${a.price}</span>
+              <button class="upsell-add-btn" style="background:var(--success)">Add Both</button>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+  }
+  
+  html += `
+    </div>
+    <div class="upsell-actions">
+      <button class="btn btn-secondary btn-block" onclick="addStandardToCart('${item.id}'); closeUpsellModal();">Just add standard ${item.name}</button>
+    </div>
+  `;
+  
+  sheet.innerHTML = html;
+  overlay.classList.add('active');
+}
+
+function closeUpsellModal() {
+  const overlay = $('upsell-overlay');
+  if (overlay) overlay.classList.remove('active');
+}
+
+// Add touch/click-outside dismiss for upsell modal
+setTimeout(() => {
+  const upsellOverlay = $('upsell-overlay');
+  if (upsellOverlay) {
+    upsellOverlay.addEventListener('click', e => {
+      if (e.target === upsellOverlay) closeUpsellModal();
+    });
+  }
+}, 200);
+
+function addComboToCart(comboId) {
+  const combo = (S.combos || []).find(c => c.id === comboId);
+  if (!combo) return;
+  const cartId = 'combo_' + comboId;
+  const existing = S.cart.find(c => c.id === cartId);
+  if (existing) {
+    existing.qty++;
+  } else {
+    S.cart.push({
+      id: cartId,
+      name: combo.name,
+      price: combo.price,
+      qty: 1,
+      type: 'Veg',
+      portion: '',
+      isCombo: true
+    });
+  }
+  updateCartBadge();
+  showToast(combo.name + ' Added to Cart! 🏷️', 'success');
 }
 
 function changeQty(cartId,delta){
@@ -425,12 +680,6 @@ async function loadCartAddOns(){
           <div class="skeleton" style="height:12px;width:50%;margin:0 auto 10px auto"></div>
           <div class="skeleton" style="height:26px;width:100%;border-radius:var(--radius-xs)"></div>
         </div>
-        <div class="addon-card" style="pointer-events:none;opacity:0.8">
-          <div class="addon-card-img skeleton" style="height:80px;width:100%"></div>
-          <div class="skeleton" style="height:12px;width:75%;margin:8px auto 6px auto"></div>
-          <div class="skeleton" style="height:12px;width:45%;margin:0 auto 10px auto"></div>
-          <div class="skeleton" style="height:26px;width:100%;border-radius:var(--radius-xs)"></div>
-        </div>
       </div>
     </div>
   `;
@@ -438,19 +687,67 @@ async function loadCartAddOns(){
   const ids=S.cart.map(c=>c.baseId||c.id.split('__')[0]);
   try{
     const r=await callServer('getAddOnsForCart',ids);
-    if(!r.success||!r.data||!r.data.length){adSec.innerHTML='';return}
-    // Filter out items already in cart
-    const cartIds=S.cart.map(c=>c.id.split('__')[0]);
-    const addons=r.data.filter(a=>!cartIds.includes(a.id));
-    if(!addons.length){adSec.innerHTML='';return}
-    let html='<div class="addon-section"><h3>🍽️ Complete Your Meal</h3><div class="addon-scroll">';
-    addons.forEach(a=>{
-      const imgHtml = a.image ? '<img src="' + a.image + '" alt="' + a.name + '" loading="lazy">' : '<span style="font-size:1.8rem">🍛</span>';
-      const badge = a.type === 'Non-Veg' ? '🔴' : '🟢';
-      html+='<div class="addon-card"><div class="addon-card-img">'+imgHtml+'</div><div class="ac-name">'+badge+' '+a.name+'</div><div class="ac-price">₹'+a.price+'</div><button class="ac-add" onclick="addAddOnToCart(\''+a.id+'\',\''+a.name.replace(/'/g,"\\'")+'\','+a.price+',\''+a.type+'\')">+ ADD</button></div>';
+    let addons = [];
+    if(r && r.success && r.data){
+      const cartIds=S.cart.map(c=>c.id.split('__')[0]);
+      addons = r.data.filter(a=>!cartIds.includes(a.id));
+    }
+    
+    // Find matching combos based on items in cart
+    const cartIds = S.cart.map(c => c.baseId || c.id.split('__')[0]);
+    const matchingCombos = (S.combos || []).filter(combo => {
+      if (!combo.available) return false;
+      // If combo is already in cart, skip
+      if (S.cart.some(c => c.id === 'combo_' + combo.id)) return false;
+      // If combo's included items contain any item in cart, suggest it
+      const included = (combo.includedItems || '').split(',').map(s => s.trim());
+      return included.some(itemId => cartIds.includes(itemId));
     });
-    html+='</div></div>';adSec.innerHTML=html;
-  }catch(e){adSec.innerHTML=''}
+
+    if(!addons.length && !matchingCombos.length){
+      adSec.innerHTML='';
+      return;
+    }
+    
+    let html = '';
+    
+    // 1. Render Combos
+    if (matchingCombos.length > 0) {
+      html += `
+        <div class="addon-section" style="margin-bottom: 20px;">
+          <h3>🏷️ Upgrade to Combo Deal & Save!</h3>
+          <div class="addon-scroll">
+      `;
+      matchingCombos.forEach(c => {
+        const imgHtml = c.image ? '<img src="' + c.image + '" alt="' + c.name + '" loading="lazy">' : '<span style="font-size:1.8rem">🍱</span>';
+        html += `
+          <div class="addon-card combo-addon-card" style="border: 1px solid var(--primary); background: rgba(255, 107, 53, 0.04); min-width: 160px; text-align: center;">
+            <div class="addon-card-img">${imgHtml}</div>
+            <div class="ac-name" style="font-weight: 700; color: var(--primary);">${c.name}</div>
+            <div class="ac-desc" style="font-size: 0.65rem; color: var(--text3); margin-bottom: 6px; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.includedNames || ''}</div>
+            <div class="ac-price">₹${c.price}</div>
+            <button class="ac-add" style="background: var(--primary-gradient); color: #fff; width: 100%; border: none; padding: 6px; border-radius: 4px; cursor: pointer;" onclick="addComboToCart('${c.id}'); renderCart();">+ COMBO</button>
+          </div>
+        `;
+      });
+      html += '</div></div>';
+    }
+    
+    // 2. Render Add-ons
+    if (addons.length > 0) {
+      html += '<div class="addon-section"><h3>🍽️ Complete Your Meal</h3><div class="addon-scroll">';
+      addons.forEach(a=>{
+        const imgHtml = a.image ? '<img src="' + a.image + '" alt="' + a.name + '" loading="lazy">' : '<span style="font-size:1.8rem">🍛</span>';
+        const badge = a.type === 'Non-Veg' ? '🔴' : '🟢';
+        html+='<div class="addon-card"><div class="addon-card-img">'+imgHtml+'</div><div class="ac-name">'+badge+' '+a.name+'</div><div class="ac-price">₹'+a.price+'</div><button class="ac-add" onclick="addAddOnToCart(\''+a.id+'\',\''+a.name.replace(/'/g,"\\'")+'\','+a.price+',\''+a.type+'\')">+ ADD</button></div>';
+      });
+      html+='</div></div>';
+    }
+    
+    adSec.innerHTML = html;
+  } catch(e) {
+    adSec.innerHTML = '';
+  }
 }
 
 function addAddOnToCart(id,name,price,type){
@@ -1480,17 +1777,312 @@ function handleAdminLogout(){
 
 function switchAdminTab(btn,tabId){
   document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');
-  ['admin-orders-tab','admin-menu-tab','admin-addons-tab','admin-reports-tab','admin-qr-tab','admin-settings-tab'].forEach(id=>{$(id).classList.toggle('hidden',id!==tabId)});
+  ['admin-orders-tab','admin-menu-tab','admin-addons-tab','admin-combos-tab','admin-reports-tab','admin-qr-tab','admin-settings-tab'].forEach(id=>{$(id).classList.toggle('hidden',id!==tabId)});
   
   if($('admin-orders-search')) $('admin-orders-search').value = '';
   if($('admin-menu-search')) $('admin-menu-search').value = '';
   if($('admin-addons-search')) $('admin-addons-search').value = '';
+  if($('admin-combos-search')) $('admin-combos-search').value = '';
 
   if(tabId==='admin-menu-tab')loadAdminMenu();
   if(tabId==='admin-addons-tab')loadAdminAddOns();
+  if(tabId==='admin-combos-tab')loadAdminCombos();
   if(tabId==='admin-reports-tab')initReportsTab();
   if(tabId==='admin-qr-tab')initQRTab();
   if(tabId==='admin-settings-tab')loadAdminSettings()
+}
+
+// ===== ADMIN COMBO MANAGEMENT =====
+async function loadAdminCombos() {
+  const searchInput = $('admin-combos-search');
+  if (searchInput && document.activeElement === searchInput) return;
+  
+  try {
+    if (!S.adminMenu || !S.adminMenu.length) {
+      const menuRes = await callServer('getAllMenuItems');
+      if (menuRes.success) {
+        S.adminMenu = menuRes.data;
+      }
+    }
+    
+    const r = await callServer('getCombosData');
+    if (r.success) {
+      S.combos = r.data;
+      renderAdminCombos();
+    }
+  } catch(e) {
+    showToast('Failed to load combos', 'error');
+  }
+}
+
+function renderAdminCombos() {
+  const listEl = $('admin-combos-list');
+  if (!listEl) return;
+  
+  const query = $('admin-combos-search') ? $('admin-combos-search').value.toLowerCase().trim() : '';
+  const combos = S.combos || [];
+  
+  let filtered = combos;
+  if (query) {
+    filtered = combos.filter(c => 
+      c.name.toLowerCase().includes(query) ||
+      (c.includedNames || '').toLowerCase().includes(query)
+    );
+  }
+  
+  if (!filtered.length) {
+    listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><p>No combos found</p></div>';
+    return;
+  }
+  
+  listEl.innerHTML = filtered.map(c => {
+    const imgHtml = c.image ? `<img src="${c.image}" alt="${c.name}" style="width:40px;height:40px;object-fit:cover;border-radius:6px">` : '<span style="font-size:1.5rem">🍱</span>';
+    const statusText = c.available ? 'Active' : 'Disabled';
+    const statusClass = c.available ? 'status-ready' : 'status-received';
+    
+    return `
+      <div class="admin-menu-item" style="padding: 12px 16px;">
+        <div style="display:flex;align-items:center;gap:12px;flex:1">
+          <div class="ami-img" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:var(--bg2);border-radius:6px">${imgHtml}</div>
+          <div class="ami-info">
+            <h4 style="font-size:0.95rem;color:var(--text1)">${c.name}</h4>
+            <div class="ami-meta" style="font-size:0.75rem;color:var(--text3);margin-top:2px">
+              Price: <strong>₹${c.price}</strong> | Items: ${c.includedNames || 'None'}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="status-badge ${statusClass}" style="font-size:0.65rem">${statusText}</span>
+          <label class="toggle-switch">
+            <input type="checkbox" ${c.available ? 'checked' : ''} onchange="toggleComboAvail('${c.id}')">
+            <span class="slider"></span>
+          </label>
+          <button class="btn btn-ghost btn-sm" onclick="showEditComboModal('${c.id}', '${encodeURIComponent(JSON.stringify(c))}')">✏️</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="deleteAdminCombo('${c.id}', '${c.name.replace(/'/g,"\\'")}')">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function getMenuListCheckboxes(selectedIds = []) {
+  const items = S.adminMenu || [];
+  if (!items.length) return '<p style="color:var(--text3);font-size:0.8rem">No menu items found. Please add menu items first.</p>';
+  
+  const groups = {};
+  items.forEach(it => {
+    if (!groups[it.category]) groups[it.category] = [];
+    groups[it.category].push(it);
+  });
+  
+  let html = '<div class="combo-items-checklist" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);padding:10px;border-radius:var(--radius-sm);background:var(--bg2)">';
+  for (const cat in groups) {
+    html += `<div style="font-weight:bold;font-size:0.75rem;color:var(--primary);margin:6px 0 4px 0">${cat}</div>`;
+    groups[cat].forEach(it => {
+      const checked = selectedIds.includes(it.id) ? 'checked' : '';
+      html += `
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;margin-bottom:4px;cursor:pointer">
+          <input type="checkbox" class="combo-item-chk" value="${it.id}" ${checked}>
+          <span>${it.name} (₹${it.price})</span>
+        </label>
+      `;
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function showAddComboModal() {
+  const checklistHtml = getMenuListCheckboxes();
+  const html = `
+    <div class="modal-header">
+      <h3>Add Custom Combo / Bundle</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="input-group">
+      <label>Combo Name</label>
+      <input id="co-name" placeholder="e.g. Burger + Fries + Coke Combo">
+    </div>
+    <div class="input-group">
+      <label>Combo Price (₹)</label>
+      <input id="co-price" type="number" placeholder="0">
+    </div>
+    <div class="input-group">
+      <label>Select Included Items</label>
+      ${checklistHtml}
+    </div>
+    <div class="input-group">
+      <label>Image URL (optional)</label>
+      <input id="co-img" placeholder="https://...">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveNewCombo()">Create Combo</button>
+  `;
+  $('modal-content').innerHTML = html;
+  $('modal-overlay').classList.add('active');
+}
+
+function showEditComboModal(id, encoded) {
+  const combo = JSON.parse(decodeURIComponent(encoded));
+  const selectedIds = (combo.includedItems || '').split(',').map(s => s.trim());
+  const checklistHtml = getMenuListCheckboxes(selectedIds);
+  const html = `
+    <div class="modal-header">
+      <h3>Edit Combo</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="input-group">
+      <label>Combo Name</label>
+      <input id="co-name" value="${combo.name || ''}" placeholder="Combo name">
+    </div>
+    <div class="input-group">
+      <label>Combo Price (₹)</label>
+      <input id="co-price" type="number" value="${combo.price || ''}" placeholder="0">
+    </div>
+    <div class="input-group">
+      <label>Select Included Items</label>
+      ${checklistHtml}
+    </div>
+    <div class="input-group">
+      <label>Image URL</label>
+      <input id="co-img" value="${combo.image || ''}" placeholder="https://...">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveEditCombo('${id}')">Save Changes</button>
+  `;
+  $('modal-content').innerHTML = html;
+  $('modal-overlay').classList.add('active');
+}
+
+async function saveNewCombo() {
+  const name = $('co-name').value;
+  const price = parseFloat($('co-price').value);
+  const image = $('co-img').value;
+  
+  const checkedBoxes = document.querySelectorAll('.combo-item-chk:checked');
+  const includedIds = Array.from(checkedBoxes).map(cb => cb.value);
+  const includedItemsStr = includedIds.join(',');
+  
+  if (!name || isNaN(price)) {
+    return showToast('Name and price are required', 'error');
+  }
+  if (includedIds.length === 0) {
+    return showToast('Please select at least one included item', 'error');
+  }
+  
+  const data = {
+    name,
+    price,
+    includedItems: includedItemsStr,
+    image,
+    available: true
+  };
+  
+  showLoader('Creating combo...');
+  try {
+    const r = await callServer('addCombo', data);
+    hideLoader();
+    if (r.success) {
+      showToast('Combo created successfully! 🎉', 'success');
+      closeModal();
+      loadAdminCombos();
+    } else {
+      showToast(r.message || 'Failed to create combo', 'error');
+    }
+  } catch(e) {
+    hideLoader();
+    showToast('Failed to connect to server', 'error');
+  }
+}
+
+async function saveEditCombo(id) {
+  const name = $('co-name').value;
+  const price = parseFloat($('co-price').value);
+  const image = $('co-img').value;
+  
+  const checkedBoxes = document.querySelectorAll('.combo-item-chk:checked');
+  const includedIds = Array.from(checkedBoxes).map(cb => cb.value);
+  const includedItemsStr = includedIds.join(',');
+  
+  if (!name || isNaN(price)) {
+    return showToast('Name and price are required', 'error');
+  }
+  if (includedIds.length === 0) {
+    return showToast('Please select at least one included item', 'error');
+  }
+  
+  const data = {
+    id,
+    name,
+    price,
+    includedItems: includedItemsStr,
+    image,
+    available: true
+  };
+  
+  showLoader('Saving combo...');
+  try {
+    const r = await callServer('updateCombo', data);
+    hideLoader();
+    if (r.success) {
+      showToast('Combo updated successfully! 🎉', 'success');
+      closeModal();
+      loadAdminCombos();
+    } else {
+      showToast(r.message || 'Failed to save combo', 'error');
+    }
+  } catch(e) {
+    hideLoader();
+    showToast('Failed to connect to server', 'error');
+  }
+}
+
+async function toggleComboAvail(id) {
+  const combo = (S.combos || []).find(c => c.id === id);
+  if (!combo) return;
+  
+  combo.available = !combo.available;
+  renderAdminCombos();
+  
+  try {
+    const r = await callServer('updateCombo', {
+      id: combo.id,
+      name: combo.name,
+      price: combo.price,
+      includedItems: combo.includedItems,
+      image: combo.image,
+      available: combo.available
+    });
+    if (r.success) {
+      showToast('Combo availability updated! 🎉', 'success');
+      loadAdminCombos();
+    } else {
+      showToast(r.message || 'Failed to update availability', 'error');
+      combo.available = !combo.available;
+      renderAdminCombos();
+    }
+  } catch(e) {
+    showToast('Network error, reverted change', 'error');
+    combo.available = !combo.available;
+    renderAdminCombos();
+  }
+}
+
+async function deleteAdminCombo(id, name) {
+  if (!confirm(`Are you sure you want to delete combo "${name}"?`)) return;
+  
+  showLoader('Deleting combo...');
+  try {
+    const r = await callServer('deleteCombo', id);
+    hideLoader();
+    if (r.success) {
+      showToast('Combo deleted successfully! 🎉', 'success');
+      loadAdminCombos();
+    } else {
+      showToast(r.message || 'Failed to delete combo', 'error');
+    }
+  } catch(e) {
+    hideLoader();
+    showToast('Failed to delete combo', 'error');
+  }
 }
 
 function initReportsTab() {
@@ -3116,6 +3708,128 @@ async function payExpiredSubscription() {
   }
 }
 
+async function bootstrapApp() {
+  try {
+    const r = await callServer('getBootstrapData');
+    if (r.success && r.data) {
+      applyBootstrapData(r.data);
+      DataCache.set('getBootstrapData', r);
+      return true;
+    }
+  } catch(e) {
+    console.error('Failed to bootstrap app:', e);
+  }
+  return false;
+}
+
+function applyBootstrapData(d) {
+  if (!d) return;
+  
+  if (d.init) {
+    S.config = d.init;
+    if (d.init.subscriptionStatus) S.subscriptionStatus = d.init.subscriptionStatus;
+  }
+  
+  if (d.combos) S.combos = d.combos;
+  if (d.addOns) S.adminAddons = d.addOns;
+  
+  if (d.menu) {
+    S.menu = d.menu;
+    S.categories = [...new Set(d.menu.map(it => it.category))];
+  }
+  
+  const config = S.config || {};
+  
+  // White-label branding
+  const rName = config.restaurantName || 'MenuSarthi';
+  const nameEl = $('landing-name');
+  if (nameEl) nameEl.textContent = rName;
+  const taglineEl = $('landing-tagline');
+  if (taglineEl) taglineEl.textContent = config.restaurantTagline || '';
+  document.title = rName + ' — Digital Menu';
+  
+  // Dynamic logo
+  const logoEl = $('landing-logo');
+  if (logoEl) {
+    if (config.logoUrl) {
+      logoEl.innerHTML = '<img src="' + config.logoUrl + '" alt="Logo" style="width:100%;height:100%;object-fit:cover;border-radius:28px">';
+    } else {
+      logoEl.innerHTML = '🍽️';
+    }
+  }
+  
+  // Powered by footer
+  const pbEl = $('powered-by-landing');
+  if (pbEl) pbEl.innerHTML = 'Powered by <a href="#">MenuSarthi</a>';
+
+  // Dynamic SEO & social meta
+  const pageUrl = window.location.href;
+  const tagline = config.restaurantTagline || 'Scan • Order • Enjoy';
+  const seoTitle = rName + ' — Digital Menu';
+  const seoDesc = rName + ' — ' + tagline + '. Order delicious food from our digital menu. Browse our full menu, customize your order, and enjoy a seamless dining experience!';
+  const seoImage = config.logoUrl || 'https://em-content.zobj.net/source/apple/391/fork-and-knife-with-plate_1f37d-fe0f.png';
+
+  const metaDesc = $('meta-description');
+  if (metaDesc) metaDesc.setAttribute('content', seoDesc);
+
+  const ogUrl = $('og-url');
+  if (ogUrl) ogUrl.setAttribute('content', pageUrl);
+  const ogTitle = $('og-title');
+  if (ogTitle) ogTitle.setAttribute('content', seoTitle);
+  const ogDesc = $('og-description');
+  if (ogDesc) ogDesc.setAttribute('content', seoDesc);
+  const ogImage = $('og-image');
+  if (ogImage) ogImage.setAttribute('content', seoImage);
+  const ogImgAlt = $('og-image-alt');
+  if (ogImgAlt) ogImgAlt.setAttribute('content', rName + ' Logo');
+  const ogSiteName = $('og-site-name');
+  if (ogSiteName) ogSiteName.setAttribute('content', rName);
+
+  const twTitle = $('tw-title');
+  if (twTitle) twTitle.setAttribute('content', seoTitle);
+  const twDesc = $('tw-description');
+  if (twDesc) twDesc.setAttribute('content', seoDesc);
+  const twImage = $('tw-image');
+  if (twImage) twImage.setAttribute('content', seoImage);
+
+  if (config.logoUrl) {
+    const favicon = $('favicon');
+    if (favicon) favicon.setAttribute('href', config.logoUrl);
+    const appleTouchIcon = $('apple-touch-icon');
+    if (appleTouchIcon) appleTouchIcon.setAttribute('href', config.logoUrl);
+  }
+  
+  // Render categories and menu list
+  if (S.categories.length) {
+    renderCategoryTabs();
+    const activeTab = document.querySelector('.cat-tab.active');
+    const activeCatName = activeTab ? activeTab.textContent : S.categories[0];
+    renderMenuItems(activeCatName);
+  }
+  
+  // Subscription Gate
+  const sub = S.subscriptionStatus;
+  if (sub && !sub.isActive && sub.found) {
+    if (INIT_PAGE === 'admin') {
+      navigateTo('admin');
+      if (S.isAdmin) {
+        renderSubscriptionBanner();
+        const dashEl = $('admin-dashboard');
+        if (dashEl) dashEl.classList.add('admin-expired-overlay');
+      }
+    } else {
+      navigateTo('maintenance');
+    }
+  } else {
+    // Active subscription
+    if (S.isAdmin) {
+      loadAdminData();
+      startAdminRefresh();
+      renderSubscriptionBanner();
+    }
+  }
+}
+
 async function init(){
   if(S.table){$('table-badge').style.display='flex';$('table-display').textContent=S.table}
   // Restore session
@@ -3133,97 +3847,39 @@ async function init(){
   
   setInterval(checkAdminSessionExpiry,60000);
   
-  try{
-    const r=await callServer('getInitData');
-    if(r.success){
-      const d=r.data;S.config=d;
-      // Store deployment URL
-      if(d.deploymentUrl) S.config.deploymentUrl = d.deploymentUrl;
-      
-      // Store subscription status
-      if(d.subscriptionStatus) S.subscriptionStatus = d.subscriptionStatus;
-      
-      // White-label branding
-      const rName=d.restaurantName||'MenuSarthi';
-      $('landing-name').textContent=rName;
-      $('landing-tagline').textContent=d.restaurantTagline||'';
-      document.title=rName+' — Digital Menu';
-      // Dynamic logo
-      const logoEl=$('landing-logo');
-      if(d.logoUrl){logoEl.innerHTML='<img src="'+d.logoUrl+'" alt="Logo" style="width:100%;height:100%;object-fit:cover;border-radius:28px">'}
-      // Powered by footer
-      const pbEl=$('powered-by-landing');
-      if(pbEl)pbEl.innerHTML='Powered by <a href="#">MenuSarthi</a>';
-
-      // ===== DYNAMIC SEO & SOCIAL META TAGS =====
-      const pageUrl = window.location.href;
-      const tagline = d.restaurantTagline || 'Scan • Order • Enjoy';
-      const seoTitle = rName + ' — Digital Menu';
-      const seoDesc = rName + ' — ' + tagline + '. Order delicious food from our digital menu. Browse our full menu, customize your order, and enjoy a seamless dining experience!';
-      const seoImage = d.logoUrl || 'https://em-content.zobj.net/source/apple/391/fork-and-knife-with-plate_1f37d-fe0f.png';
-
-      // Update SEO meta
-      const metaDesc = $('meta-description');
-      if (metaDesc) metaDesc.setAttribute('content', seoDesc);
-
-      // Update Open Graph tags (WhatsApp, Facebook, LinkedIn)
-      const ogUrl = $('og-url');
-      if (ogUrl) ogUrl.setAttribute('content', pageUrl);
-      const ogTitle = $('og-title');
-      if (ogTitle) ogTitle.setAttribute('content', seoTitle);
-      const ogDesc = $('og-description');
-      if (ogDesc) ogDesc.setAttribute('content', seoDesc);
-      const ogImage = $('og-image');
-      if (ogImage) ogImage.setAttribute('content', seoImage);
-      const ogImgAlt = $('og-image-alt');
-      if (ogImgAlt) ogImgAlt.setAttribute('content', rName + ' Logo');
-      const ogSiteName = $('og-site-name');
-      if (ogSiteName) ogSiteName.setAttribute('content', rName);
-
-      // Update Twitter Card tags
-      const twTitle = $('tw-title');
-      if (twTitle) twTitle.setAttribute('content', seoTitle);
-      const twDesc = $('tw-description');
-      if (twDesc) twDesc.setAttribute('content', seoDesc);
-      const twImage = $('tw-image');
-      if (twImage) twImage.setAttribute('content', seoImage);
-
-      // Update favicon & apple-touch-icon with restaurant logo
-      if (d.logoUrl) {
-        const favicon = $('favicon');
-        if (favicon) favicon.setAttribute('href', d.logoUrl);
-        const appleTouchIcon = $('apple-touch-icon');
-        if (appleTouchIcon) appleTouchIcon.setAttribute('href', d.logoUrl);
-      }
-      
-      // ===== SUBSCRIPTION GATE =====
-      const sub = S.subscriptionStatus;
-      if (sub && !sub.isActive && sub.found) {
-        if (INIT_PAGE === 'admin') {
-          // Admin mode: allow login, but show expired after login
-          navigateTo('admin');
-          // If already logged in via session, show expired state
-          if (S.isAdmin) {
-            renderSubscriptionBanner();
-            const dashEl = $('admin-dashboard');
-            if (dashEl) dashEl.classList.add('admin-expired-overlay');
-          }
-          return;
-        } else {
-          // Customer mode: show maintenance page
-          navigateTo('maintenance');
-          return;
-        }
-      }
-      
-      // Active subscription — proceed normally
-      if (S.isAdmin) {
-        loadAdminData();
-        startAdminRefresh();
-        renderSubscriptionBanner(); // Show warning if expiring soon
-      }
+  // Tab Visibility listener to sync on tab focus
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      console.log('Tab focused, syncing in background...');
+      bootstrapApp();
+      if (S.isAdmin) loadAdminData();
     }
-  }catch(e){}
+  });
+  
+  // High performance: Apply cache immediately
+  const cached = DataCache.get('getBootstrapData');
+  if (cached && cached.success && cached.data) {
+    applyBootstrapData(cached.data);
+  }
+  
+  // Fetch fresh data in background (or foreground if no cache exists to prevent blank screens)
+  if (!cached) {
+    showLoader('Loading digital menu...');
+  }
+  
+  try {
+    const success = await bootstrapApp();
+    if (!success && !cached) {
+      showToast('Could not load menu. Working offline.', 'warning');
+    }
+  } catch(e) {
+    if (!cached) {
+      showToast('Error loading menu. Please reload.', 'error');
+    }
+  } finally {
+    if (!cached) hideLoader();
+  }
+  
   if(INIT_PAGE==='admin'){navigateTo('admin');return}
 }
 init();

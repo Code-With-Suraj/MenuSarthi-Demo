@@ -43,6 +43,13 @@
   <div class="bg-glow bg-glow-1"></div>
   <div class="bg-glow bg-glow-2"></div>
 
+  <!-- Network Status Banner -->
+  <div id="network-banner" class="network-banner offline-banner hidden">
+    <span class="network-banner-icon">📡</span>
+    <span class="network-banner-text" id="network-banner-text">Working Offline — Using Cached Menu</span>
+    <span class="network-banner-retry" onclick="retryNetworkConnection()">Retry</span>
+  </div>
+
   <!-- ========== MAINTENANCE VIEW (Subscription Expired — Customer Facing) ========== -->
   <div id="view-maintenance" class="view">
     <div class="maintenance-page">
@@ -281,6 +288,7 @@
     <button class="admin-tab active" data-tab="admin-orders-tab" onclick="switchAdminTab(this,'admin-orders-tab')">🔔 Orders</button>
     <button class="admin-tab" data-tab="admin-menu-tab" onclick="switchAdminTab(this,'admin-menu-tab')">📋 Menu</button>
     <button class="admin-tab" data-tab="admin-addons-tab" onclick="switchAdminTab(this,'admin-addons-tab')">🧩 Add-Ons</button>
+    <button class="admin-tab" data-tab="admin-combos-tab" onclick="switchAdminTab(this,'admin-combos-tab')">🏷️ Combos</button>
     <button class="admin-tab" data-tab="admin-reports-tab" onclick="switchAdminTab(this,'admin-reports-tab')">📊 Reports</button>
     <button class="admin-tab" data-tab="admin-qr-tab" onclick="switchAdminTab(this,'admin-qr-tab')">📱 QR</button>
     <button class="admin-tab" data-tab="admin-settings-tab" onclick="switchAdminTab(this,'admin-settings-tab')">⚙️ Settings</button>
@@ -319,6 +327,18 @@
       </div>
     </div>
     <div id="admin-addons-list"></div>
+  </div>
+
+  <!-- Combos Tab -->
+  <div id="admin-combos-tab" class="hidden">
+    <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="showAddComboModal()" style="margin-bottom:0">+ Add Combo</button>
+      <div class="search-box" style="flex:1;margin-bottom:0;min-width:200px">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="admin-combos-search" placeholder="Search combos by name..." oninput="renderAdminCombos()" autocorrect="off" autocapitalize="none" spellcheck="false">
+      </div>
+    </div>
+    <div id="admin-combos-list"></div>
   </div>
 
   <!-- Reports Tab -->
@@ -657,6 +677,11 @@
   <!-- ========== PORTION SELECTOR BOTTOM SHEET ========== -->
   <div class="portion-overlay" id="portion-overlay">
     <div class="portion-sheet" id="portion-sheet"></div>
+  </div>
+
+  <!-- ========== UPSELL SUGGESTION BOTTOM SHEET ========== -->
+  <div class="portion-overlay" id="upsell-overlay">
+    <div class="portion-sheet" id="upsell-sheet"></div>
   </div>
 
   <!-- ========== MODAL ========== -->
