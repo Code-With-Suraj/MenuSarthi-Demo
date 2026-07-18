@@ -4591,12 +4591,30 @@ h4 { font-size: 1.05rem; font-weight: 600; }
 /* Reviews List */
 .dish-reviews-list {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 12px;
   margin-bottom: 20px;
-  max-height: 350px;
-  overflow-y: auto;
-  padding-right: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 12px;
+  scrollbar-width: thin;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dish-reviews-list::-webkit-scrollbar {
+  height: 5px;
+}
+.dish-reviews-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.01);
+  border-radius: 3px;
+}
+.dish-reviews-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 94, 20, 0.2);
+  border-radius: 3px;
+}
+.dish-reviews-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 94, 20, 0.4);
 }
 
 .review-list-card {
@@ -4608,6 +4626,9 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   flex-direction: column;
   gap: 8px;
   animation: fadeUp 0.35s ease both;
+  flex-shrink: 0;
+  width: 280px;
+  scroll-snap-align: start;
 }
 
 .review-list-header {
@@ -4825,6 +4846,8 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  flex-shrink: 0;
 }
 
 .reviews-empty-icon {

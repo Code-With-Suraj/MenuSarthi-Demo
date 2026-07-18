@@ -134,7 +134,7 @@ async function callServer(action, ...args) {
     }
     
     // If it's a critical customer action, queue it in NetworkMonitor
-    if (['placeOrder', 'registerUser', 'loginUser', 'updateExistingOrder', 'reviseOrder'].includes(action)) {
+    if (['placeOrder', 'registerUser', 'loginUser', 'updateExistingOrder', 'reviseOrder', 'addReview'].includes(action)) {
       return new Promise((resolve, reject) => {
         NetworkMonitor.enqueue(action, args, resolve, reject);
       });
@@ -4299,19 +4299,19 @@ async function loadReviewsForDetail(itemId) {
     if (r.success && r.data) {
       renderReviewsData(itemId, r.data);
     } else {
-      container.innerHTML = `<div class="reviews-empty-state"><div class="reviews-empty-icon">⚠️</div><p>${r.message || 'Failed to load reviews'}</p></div>`;
+      renderReviewsData(itemId, null, r.message || 'Failed to load reviews');
     }
   } catch (e) {
-    container.innerHTML = `<div class="reviews-empty-state"><div class="reviews-empty-icon">📡</div><p>Working Offline — Reviews unavailable</p></div>`;
+    renderReviewsData(itemId, null, 'Working Offline — Reviews unavailable');
   }
 }
 
-function renderReviewsData(itemId, data) {
+function renderReviewsData(itemId, data, errorMessage) {
   const container = $('dish-reviews-container');
   if (!container) return;
 
-  const reviews = data.reviews || [];
-  const stats = data.stats || { avgRating: 0, totalCount: 0, starBreakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } };
+  const reviews = data ? (data.reviews || []) : [];
+  const stats = data ? (data.stats || { avgRating: 0, totalCount: 0, starBreakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } }) : { avgRating: 0, totalCount: 0, starBreakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } };
   const total = stats.totalCount;
 
   // Star breakdown rows generator
@@ -4332,7 +4332,15 @@ function renderReviewsData(itemId, data) {
 
   // Reviews List Generator
   let listHtml = '';
-  if (reviews.length === 0) {
+  if (errorMessage) {
+    const isOfflineErr = errorMessage.includes('Offline');
+    listHtml = `
+      <div class="reviews-empty-state">
+        <div class="reviews-empty-icon">${isOfflineErr ? '📡' : '⚠️'}</div>
+        <p>${errorMessage}</p>
+      </div>
+    `;
+  } else if (reviews.length === 0) {
     listHtml = `
       <div class="reviews-empty-state">
         <div class="reviews-empty-icon">✨</div>
@@ -4408,19 +4416,25 @@ function renderReviewsData(itemId, data) {
     }
   }
 
-  const avgStarString = '★'.repeat(Math.round(stats.avgRating)) + '☆'.repeat(5 - Math.round(stats.avgRating));
+  let summaryHtml = '';
+  if (data && stats.totalCount > 0) {
+    const avgStarString = '★'.repeat(Math.round(stats.avgRating)) + '☆'.repeat(5 - Math.round(stats.avgRating));
+    summaryHtml = `
+      <div class="reviews-summary-card">
+        <div class="reviews-summary-avg">
+          <div class="reviews-summary-avg-num">${stats.avgRating}</div>
+          <div class="reviews-summary-avg-stars">${avgStarString}</div>
+          <div class="reviews-summary-avg-count">${total} reviews</div>
+        </div>
+        <div class="reviews-breakdown-list">
+          ${breakdownRowsHtml}
+        </div>
+      </div>
+    `;
+  }
 
   container.innerHTML = `
-    <div class="reviews-summary-card">
-      <div class="reviews-summary-avg">
-        <div class="reviews-summary-avg-num">${stats.avgRating}</div>
-        <div class="reviews-summary-avg-stars">${avgStarString}</div>
-        <div class="reviews-summary-avg-count">${total} reviews</div>
-      </div>
-      <div class="reviews-breakdown-list">
-        ${breakdownRowsHtml}
-      </div>
-    </div>
+    ${summaryHtml}
 
     <div class="dish-reviews-list">
       ${listHtml}
