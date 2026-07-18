@@ -4354,7 +4354,9 @@ function renderReviewsData(itemId, data, errorMessage) {
       const starString = '★'.repeat(rev.rating) + '☆'.repeat(5 - rev.rating);
       
       // Highlight own review if phone matches (loosely based on masking)
-      const isOwnReview = S.user && rev.phone && rev.phone.substring(0, 4) === S.user.phone.substring(0, 4);
+      const userPhoneStr = S.user && S.user.phone ? String(S.user.phone) : '';
+      const revPhoneStr = rev.phone ? String(rev.phone) : '';
+      const isOwnReview = userPhoneStr && revPhoneStr && revPhoneStr.substring(0, 4) === userPhoneStr.substring(0, 4);
       const highlightClass = isOwnReview ? 'review-own-highlight' : '';
       const ownTag = isOwnReview ? '<span class="review-own-tag">Your Review</span>' : '';
 
@@ -4388,7 +4390,8 @@ function renderReviewsData(itemId, data, errorMessage) {
     `;
   } else {
     // If user already reviewed, show thank you note instead of double submissions
-    const userMaskedPhone = S.user.phone.substring(0, 6) + 'XXXX';
+    const userPhoneStr = S.user && S.user.phone ? String(S.user.phone) : '';
+    const userMaskedPhone = userPhoneStr ? userPhoneStr.substring(0, 6) + 'XXXX' : '';
     const hasReviewed = reviews.some(r => r.phone === userMaskedPhone);
     
     if (hasReviewed) {
