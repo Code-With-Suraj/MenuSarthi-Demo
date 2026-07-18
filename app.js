@@ -1829,7 +1829,7 @@ async function loadAdminCombos() {
       }
     }
     
-    const r = await callServer('getCombosData');
+    const r = await callServer('getAllCombos');
     if (r.success) {
       S.combos = r.data;
       resolveComboProperties();
@@ -1962,6 +1962,10 @@ function showAddComboModal() {
         <input id="co-name" placeholder="e.g. Burger + Fries + Coke Combo">
       </div>
       <div class="input-group">
+        <label>Description (optional)</label>
+        <input id="co-desc" placeholder="Short description of the combo">
+      </div>
+      <div class="input-group">
         <label>Combo Price (₹)</label>
         <input id="co-price" type="number" placeholder="0">
       </div>
@@ -1997,6 +2001,10 @@ function showEditComboModal(id, encoded) {
         <input id="co-name" value="${combo.name || ''}" placeholder="Combo name">
       </div>
       <div class="input-group">
+        <label>Description (optional)</label>
+        <input id="co-desc" value="${combo.description || ''}" placeholder="Short description of the combo">
+      </div>
+      <div class="input-group">
         <label>Combo Price (₹)</label>
         <input id="co-price" type="number" value="${combo.price || ''}" placeholder="0">
       </div>
@@ -2019,6 +2027,7 @@ function showEditComboModal(id, encoded) {
 
 async function saveNewCombo() {
   const name = $('co-name').value;
+  const description = $('co-desc').value;
   const price = parseFloat($('co-price').value);
   const image = $('co-img').value;
   
@@ -2035,6 +2044,7 @@ async function saveNewCombo() {
   
   const data = {
     name,
+    description,
     price,
     items: includedItemsStr,
     image,
@@ -2060,6 +2070,7 @@ async function saveNewCombo() {
 
 async function saveEditCombo(id) {
   const name = $('co-name').value;
+  const description = $('co-desc').value;
   const price = parseFloat($('co-price').value);
   const image = $('co-img').value;
   
@@ -2077,6 +2088,7 @@ async function saveEditCombo(id) {
   const data = {
     id,
     name,
+    description,
     price,
     items: includedItemsStr,
     image,
@@ -2111,8 +2123,9 @@ async function toggleComboAvail(id) {
     const r = await callServer('updateCombo', {
       id: combo.id,
       name: combo.name,
+      description: combo.description || '',
       price: combo.price,
-      includedItems: combo.includedItems,
+      items: combo.items || combo.includedItems || '',
       image: combo.image,
       available: combo.available
     });
