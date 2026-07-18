@@ -3120,6 +3120,47 @@ async function init(){
       // Powered by footer
       const pbEl=$('powered-by-landing');
       if(pbEl)pbEl.innerHTML='Powered by <a href="#">MenuSarthi</a>';
+
+      // ===== DYNAMIC SEO & SOCIAL META TAGS =====
+      const pageUrl = window.location.href;
+      const tagline = d.restaurantTagline || 'Scan • Order • Enjoy';
+      const seoTitle = rName + ' — Digital Menu';
+      const seoDesc = rName + ' — ' + tagline + '. Order delicious food from our digital menu. Browse our full menu, customize your order, and enjoy a seamless dining experience!';
+      const seoImage = d.logoUrl || 'https://em-content.zobj.net/source/apple/391/fork-and-knife-with-plate_1f37d-fe0f.png';
+
+      // Update SEO meta
+      const metaDesc = $('meta-description');
+      if (metaDesc) metaDesc.setAttribute('content', seoDesc);
+
+      // Update Open Graph tags (WhatsApp, Facebook, LinkedIn)
+      const ogUrl = $('og-url');
+      if (ogUrl) ogUrl.setAttribute('content', pageUrl);
+      const ogTitle = $('og-title');
+      if (ogTitle) ogTitle.setAttribute('content', seoTitle);
+      const ogDesc = $('og-description');
+      if (ogDesc) ogDesc.setAttribute('content', seoDesc);
+      const ogImage = $('og-image');
+      if (ogImage) ogImage.setAttribute('content', seoImage);
+      const ogImgAlt = $('og-image-alt');
+      if (ogImgAlt) ogImgAlt.setAttribute('content', rName + ' Logo');
+      const ogSiteName = $('og-site-name');
+      if (ogSiteName) ogSiteName.setAttribute('content', rName);
+
+      // Update Twitter Card tags
+      const twTitle = $('tw-title');
+      if (twTitle) twTitle.setAttribute('content', seoTitle);
+      const twDesc = $('tw-description');
+      if (twDesc) twDesc.setAttribute('content', seoDesc);
+      const twImage = $('tw-image');
+      if (twImage) twImage.setAttribute('content', seoImage);
+
+      // Update favicon & apple-touch-icon with restaurant logo
+      if (d.logoUrl) {
+        const favicon = $('favicon');
+        if (favicon) favicon.setAttribute('href', d.logoUrl);
+        const appleTouchIcon = $('apple-touch-icon');
+        if (appleTouchIcon) appleTouchIcon.setAttribute('href', d.logoUrl);
+      }
       
       // ===== SUBSCRIPTION GATE =====
       const sub = S.subscriptionStatus;
