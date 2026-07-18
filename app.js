@@ -213,6 +213,7 @@ function _buildParams(action, args) {
       return { phone: args[0] };
     case 'getAddOnsForCart':
       return { cartItemIds: args[0] };
+    case 'getItemReviews':
     case 'toggleItemAvailability':
     case 'deleteMenuItem':
       return { itemId: args[0] };
