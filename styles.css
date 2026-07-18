@@ -3813,6 +3813,7 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   font-weight: 800;
   background: linear-gradient(135deg, #ff9f43, var(--primary));
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 4px;
 }
@@ -4212,4 +4213,683 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   .combo-items-checklist {
     max-height: 280px !important; /* Larger display on desktop screens */
   }
+}
+
+/* ==========================================================================
+   DISH DETAIL OVERLAY & PREMIUM RATINGS SYSTEM
+   ========================================================================== */
+
+.dish-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 12, 0.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 220; /* Higher than normal sheets */
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.dish-detail-overlay.active {
+  display: flex;
+}
+
+.dish-detail-sheet {
+  width: 100%;
+  max-width: var(--max-w);
+  height: 90vh;
+  background: linear-gradient(180deg, #101116 0%, #07080b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.8);
+  animation: slideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Scrollable Container inside sheet */
+.dish-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 90px; /* Space for sticky bottom bar */
+  scrollbar-width: thin;
+}
+
+/* Close & Top Bar Controls */
+.dish-detail-topbar {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.dish-detail-sheet .portion-handle {
+  width: 44px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  margin: 0 auto;
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.dish-close-btn, .dish-fav-btn {
+  pointer-events: auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(8, 9, 12, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+}
+
+.dish-close-btn:hover {
+  background: #ff5e14;
+  border-color: transparent;
+  color: #08090c;
+  transform: scale(1.08) rotate(90deg);
+}
+
+.dish-close-btn:active {
+  transform: scale(0.95) rotate(90deg);
+}
+
+/* Hero Section */
+.dish-hero-wrapper {
+  position: relative;
+  width: 100%;
+  height: 280px;
+  overflow: hidden;
+  background: #14151b;
+}
+
+.dish-hero-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s ease;
+}
+
+.dish-hero-wrapper:hover .dish-hero-image {
+  transform: scale(1.05);
+}
+
+.dish-hero-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4rem;
+  background: linear-gradient(135deg, #1f2029 0%, #14151b 100%);
+}
+
+.dish-hero-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8, 9, 12, 0.4) 0%, rgba(8, 9, 12, 0) 50%, #101116 100%);
+  pointer-events: none;
+}
+
+/* Veg / Non-Veg badge on hero */
+.dish-hero-badge {
+  position: absolute;
+  bottom: 16px;
+  left: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(8, 9, 12, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Main Info */
+.dish-detail-content-wrap {
+  padding: 20px;
+}
+
+.dish-detail-category {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--primary);
+  font-weight: 800;
+  margin-bottom: 8px;
+  display: inline-block;
+  background: rgba(255, 94, 20, 0.08);
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 94, 20, 0.15);
+}
+
+.dish-detail-title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 10px;
+  line-height: 1.25;
+}
+
+.dish-detail-price {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--secondary);
+  font-family: var(--font-head);
+  margin-bottom: 16px;
+}
+
+.dish-detail-desc-heading {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dish-detail-description {
+  font-size: 0.9rem;
+  color: var(--text2);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+/* Portion Selector in Details */
+.dish-detail-portions-section {
+  margin-bottom: 28px;
+}
+
+.dish-detail-portions-section h4 {
+  font-size: 0.95rem;
+  color: var(--text);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dish-detail-portions-grid {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+}
+
+.dish-detail-portions-grid::-webkit-scrollbar {
+  display: none;
+}
+
+.dish-detail-portion-pill {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 20px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 100px;
+  text-align: center;
+}
+
+.dish-detail-portion-pill.active {
+  background: rgba(255, 94, 20, 0.08);
+  border-color: var(--primary);
+  box-shadow: 0 0 12px rgba(255, 94, 20, 0.15);
+}
+
+.dd-portion-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text2);
+}
+
+.dish-detail-portion-pill.active .dd-portion-name {
+  color: var(--primary);
+}
+
+.dd-portion-price {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--secondary);
+  font-family: var(--font-head);
+}
+
+/* Reviews and Ratings Section */
+.dish-reviews-section {
+  margin-top: 10px;
+  padding-top: 24px;
+  border-top: 1px dashed var(--border);
+  margin-bottom: 24px;
+}
+
+.dish-reviews-section h4 {
+  font-size: 1.1rem;
+  color: var(--text);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Reviews Summary Card */
+.reviews-summary-card {
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.reviews-summary-avg {
+  text-align: center;
+  min-width: 80px;
+}
+
+.reviews-summary-avg-num {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--primary);
+  font-family: var(--font-head);
+  line-height: 1;
+}
+
+.reviews-summary-avg-stars {
+  color: var(--secondary);
+  font-size: 0.85rem;
+  margin-top: 4px;
+  margin-bottom: 2px;
+}
+
+.reviews-summary-avg-count {
+  font-size: 0.75rem;
+  color: var(--text3);
+}
+
+/* Stars progress breakdown */
+.reviews-breakdown-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reviews-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text2);
+}
+
+.reviews-breakdown-starlabel {
+  min-width: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  font-weight: 600;
+}
+
+.reviews-breakdown-bar-bg {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.reviews-breakdown-bar-fill {
+  height: 100%;
+  background: var(--primary-gradient);
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reviews-breakdown-count {
+  min-width: 14px;
+  text-align: left;
+  color: var(--text3);
+  font-weight: 500;
+}
+
+/* Reviews List */
+.dish-reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  max-height: 350px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.review-list-card {
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fadeUp 0.35s ease both;
+}
+
+.review-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.review-list-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-list-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 94, 20, 0.15);
+  border: 1px solid rgba(255, 94, 20, 0.2);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.review-list-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.review-list-date {
+  font-size: 0.72rem;
+  color: var(--text3);
+}
+
+.review-list-stars {
+  color: var(--secondary);
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
+}
+
+.review-list-text {
+  font-size: 0.85rem;
+  color: var(--text2);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* Write a Review Section */
+.write-review-card {
+  padding: 16px 20px;
+  background: rgba(255, 94, 20, 0.03);
+  border: 1px dashed rgba(255, 94, 20, 0.25);
+  border-radius: var(--radius);
+  margin-top: 10px;
+}
+
+.write-review-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.write-review-stars-container {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.write-review-star {
+  font-size: 1.8rem;
+  color: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.write-review-star:hover {
+  transform: scale(1.15);
+}
+
+.write-review-star.active {
+  color: var(--secondary);
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+}
+
+.write-review-textarea {
+  width: 100%;
+  min-height: 70px;
+  background: rgba(8, 9, 12, 0.6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.85rem;
+  resize: vertical;
+  margin-bottom: 12px;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.write-review-textarea:focus {
+  border-color: var(--primary);
+  background: rgba(8, 9, 12, 0.8);
+  box-shadow: 0 0 10px rgba(255, 94, 20, 0.15);
+}
+
+/* Related Dishes (You May Also Like) */
+.dish-related-section {
+  margin-top: 10px;
+  padding-top: 24px;
+  border-top: 1px dashed var(--border);
+  margin-bottom: 20px;
+}
+
+.dish-related-section h4 {
+  font-size: 1.1rem;
+  color: var(--text);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dish-related-grid {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  scrollbar-width: thin;
+}
+
+.dish-related-card {
+  flex-shrink: 0;
+  width: 130px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.dish-related-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 94, 20, 0.25);
+  box-shadow: var(--shadow-sm);
+}
+
+.dish-related-card-img {
+  width: 100%;
+  height: 80px;
+  background: #14151b;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.dish-related-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dish-related-card-info {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.dish-related-card-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 2.3em;
+  line-height: 1.2;
+}
+
+.dish-related-card-price {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--secondary);
+  font-family: var(--font-head);
+  margin-top: auto;
+}
+
+/* Empty Reviews State */
+.reviews-empty-state {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--text3);
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.reviews-empty-icon {
+  font-size: 1.8rem;
+}
+
+/* Highlighted / User's Own Review */
+.review-own-highlight {
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.03);
+}
+
+.review-own-tag {
+  font-size: 0.65rem;
+  background: var(--secondary-gradient);
+  color: #0f172a;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+/* Sticky Bottom Action Bar inside Detail Sheet */
+.dish-detail-action-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 20px;
+  background: rgba(13, 14, 18, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  z-index: 15;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.dish-detail-qty-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dish-detail-btn-add {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.dish-detail-btn-add span {
+  font-family: var(--font-head);
+  font-weight: 800;
+  margin-left: 6px;
+}
+
+/* Shimmer Skeletal Loading for Reviews */
+.skeleton-bar {
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }

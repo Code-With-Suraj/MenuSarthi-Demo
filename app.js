@@ -389,7 +389,7 @@ function renderMenuItems(cat){
         descHtml='<p class="desc">'+item.description+'</p>';
       }
     }
-    g.innerHTML+='<div class="menu-item"><div class="menu-item-img">'+img+'</div><div class="menu-item-info"><div><h3>'+badge+' '+item.name+'</h3>'+descHtml+'</div><div class="menu-item-bottom"><span class="item-price">'+priceStr+'</span>'+ctrl+'</div></div></div>'
+    g.innerHTML+='<div class="menu-item" onclick="if(!event.target.closest(\'.add-btn\') && !event.target.closest(\'.read-more-btn\')) openDishDetail(\''+item.id+'\')"><div class="menu-item-img">'+img+'</div><div class="menu-item-info"><div><h3>'+badge+' '+item.name+'</h3>'+descHtml+'</div><div class="menu-item-bottom"><span class="item-price">'+priceStr+'</span>'+ctrl+'</div></div></div>'
   })
 }
 
@@ -4043,4 +4043,538 @@ async function handleUpdateExistingOrder(activeOrderId) {
     hideLoader();
     showToast('Failed to update order', 'error');
   }
+}
+
+/* ==========================================================================
+   DISH DETAIL OVERLAY & PREMIUM RATINGS SYSTEM
+   ========================================================================== */
+
+function findItemCategory(itemId) {
+  for (const cat of S.categories) {
+    if ((S.menu[cat] || []).some(item => item.id === itemId)) {
+      return cat;
+    }
+  }
+  return '';
+}
+
+function openDishDetail(itemId) {
+  const item = findMenuItem(itemId);
+  if (!item) return;
+
+  const category = findItemCategory(itemId);
+  const overlay = $('dish-detail-overlay');
+  const sheet = $('dish-detail-sheet');
+  if (!overlay || !sheet) return;
+
+  // Initialize sheet dataset states
+  sheet.dataset.itemId = itemId;
+  sheet.dataset.selectedPortion = item.portions && item.portions.length > 0 ? item.portions[0] : '';
+  sheet.dataset.selectedPrice = item.portions && item.portions.length > 0 ? item.portionPrices[0] : item.price;
+
+  // Render static baseline template
+  const isVeg = item.type === 'Veg';
+  const badgeClass = isVeg ? 'veg-badge' : 'nonveg-badge';
+  const badgeLabel = isVeg ? 'Veg' : 'Non-Veg';
+  const imageHtml = item.image ? 
+    `<img src="${item.image}" alt="${item.name}" class="dish-hero-image" loading="lazy">` : 
+    `<div class="dish-hero-fallback">🍛</div>`;
+
+  let portionsHtml = '';
+  if (item.portions && item.portions.length > 0) {
+    portionsHtml = `
+      <div class="dish-detail-portions-section">
+        <h4>Select Size</h4>
+        <div class="dish-detail-portions-grid">
+          ${item.portions.map((port, idx) => `
+            <div class="dish-detail-portion-pill ${idx === 0 ? 'active' : ''}" 
+                 data-portion="${port}" 
+                 data-price="${item.portionPrices[idx]}" 
+                 onclick="selectDetailPortion(this)">
+              <span class="dd-portion-name">${port}</span>
+              <span class="dd-portion-price">₹${item.portionPrices[idx]}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  sheet.innerHTML = `
+    <div class="portion-handle"></div>
+    <div class="dish-detail-topbar">
+      <button class="dish-close-btn" onclick="closeDishDetail()">✕</button>
+    </div>
+    
+    <div class="dish-detail-body" id="dish-detail-body">
+      <div class="dish-hero-wrapper">
+        ${imageHtml}
+        <div class="dish-hero-gradient"></div>
+        <div class="dish-hero-badge">
+          <span class="${badgeClass}"></span> ${badgeLabel}
+        </div>
+      </div>
+
+      <div class="dish-detail-content-wrap">
+        <span class="dish-detail-category">${category}</span>
+        <h2 class="dish-detail-title">${item.name}</h2>
+        <div class="dish-detail-price" id="dish-detail-main-price">
+          ₹${sheet.dataset.selectedPrice}
+        </div>
+        
+        ${item.description ? `
+          <div class="dish-detail-desc-heading">Description</div>
+          <p class="dish-detail-description">${item.description}</p>
+        ` : ''}
+
+        ${portionsHtml}
+
+        <!-- Ratings & Reviews Section -->
+        <div class="dish-reviews-section">
+          <h4>⭐ Guest Ratings & Reviews</h4>
+          <div id="dish-reviews-container">
+            <!-- Render loading state first -->
+            <div class="reviews-summary-card skeleton-bar" style="height: 100px; opacity: 0.6; border-radius: var(--radius)"></div>
+            <div style="height: 60px; margin-top: 15px; border-radius: var(--radius-sm);" class="skeleton-bar"></div>
+          </div>
+        </div>
+
+        <!-- Related Items Section -->
+        <div class="dish-related-section">
+          <h4>🍛 You May Also Like</h4>
+          <div class="dish-related-grid" id="dish-related-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sticky Bottom CTA -->
+    <div class="dish-detail-action-bar" id="dish-detail-action-bar"></div>
+  `;
+
+  overlay.classList.add('active');
+  document.body.style.overflow = 'hidden'; // Stop background scroll
+
+  // Load reviews asynchronously
+  loadReviewsForDetail(itemId);
+
+  // Render related dishes
+  renderRelatedDishes(item, category);
+
+  // Update action bar
+  updateDetailActionBar(itemId);
+
+  // Attach swipe-to-dismiss gesture
+  initSwipeToDismiss(sheet, () => closeDishDetail());
+}
+
+function closeDishDetail() {
+  const overlay = $('dish-detail-overlay');
+  if (overlay) {
+    overlay.classList.remove('active');
+    document.body.style.overflow = ''; // Restore background scroll
+  }
+}
+
+// Close overlay on backdrop click
+if ($('dish-detail-overlay')) {
+  $('dish-detail-overlay').addEventListener('click', e => {
+    if (e.target === $('dish-detail-overlay')) closeDishDetail();
+  });
+}
+
+function selectDetailPortion(pillEl) {
+  const grid = pillEl.closest('.dish-detail-portions-grid');
+  if (!grid) return;
+  
+  grid.querySelectorAll('.dish-detail-portion-pill').forEach(p => p.classList.remove('active'));
+  pillEl.classList.add('active');
+
+  const sheet = $('dish-detail-sheet');
+  sheet.dataset.selectedPortion = pillEl.dataset.portion;
+  sheet.dataset.selectedPrice = pillEl.dataset.price;
+
+  // Update main price display
+  const priceDisplay = $('dish-detail-main-price');
+  if (priceDisplay) priceDisplay.textContent = '₹' + pillEl.dataset.price;
+
+  // Update Action Bar
+  updateDetailActionBar(sheet.dataset.itemId);
+}
+
+function updateDetailActionBar(itemId) {
+  const sheet = $('dish-detail-sheet');
+  const portion = sheet.dataset.selectedPortion || '';
+  const price = parseFloat(sheet.dataset.selectedPrice);
+  const cartId = portion ? `${itemId}__${portion}` : itemId;
+
+  const cartItem = S.cart.find(c => c.id === cartId);
+  const qty = cartItem ? cartItem.qty : 0;
+  const bar = $('dish-detail-action-bar');
+  if (!bar) return;
+
+  if (qty > 0) {
+    bar.innerHTML = `
+      <div class="qty-control dish-detail-qty-wrap">
+        <button class="qty-btn" onclick="updateDetailQty('${cartId}', -1)">−</button>
+        <span class="qty-val">${qty}</span>
+        <button class="qty-btn" onclick="updateDetailQty('${cartId}', 1)">+</button>
+      </div>
+      <button class="btn btn-secondary dish-detail-btn-add" style="flex: 1;" onclick="navigateTo('cart'); closeDishDetail();">
+        🛒 Go to Cart
+      </button>
+    `;
+  } else {
+    bar.innerHTML = `
+      <button class="btn btn-primary btn-block dish-detail-btn-add" onclick="handleDetailAddToCart('${itemId}')">
+        🚀 Add to Cart <span>₹${price}</span>
+      </button>
+    `;
+  }
+}
+
+function handleDetailAddToCart(itemId) {
+  const sheet = $('dish-detail-sheet');
+  const portion = sheet.dataset.selectedPortion || '';
+  const price = parseFloat(sheet.dataset.selectedPrice);
+  
+  const item = findMenuItem(itemId);
+  if (!item) return;
+
+  // Smart Upselling Touchpoint: Check for matching combos or linked add-ons
+  const matchingCombos = (S.combos || []).filter(c => c.available && c.includedItems && c.includedItems.split(',').map(s=>s.trim()).includes(itemId));
+  const matchingAddons = (S.adminAddons || []).filter(a => a.available && a.linkedItems && a.linkedItems.split(',').map(s=>s.trim()).includes(itemId));
+  
+  if ((matchingCombos.length > 0 || matchingAddons.length > 0) && !S.cart.some(c => c.id === itemId)) {
+    closeDishDetail();
+    showUpsellModal(item, matchingCombos, matchingAddons);
+    return;
+  }
+
+  const cartId = portion ? `${itemId}__${portion}` : itemId;
+  const existing = S.cart.find(c => c.id === cartId);
+  if (existing) {
+    existing.qty++;
+  } else {
+    S.cart.push({
+      id: cartId,
+      name: item.name,
+      price: price,
+      qty: 1,
+      type: item.type,
+      portion: portion,
+      baseId: itemId
+    });
+  }
+  updateCartBadge();
+  const active = document.querySelector('.cat-tab.active');
+  if (active) renderMenuItems(active.textContent);
+  showToast(item.name + (portion ? ' (' + portion + ')' : '') + ' added', 'success');
+  updateDetailActionBar(itemId);
+}
+
+function updateDetailQty(cartId, delta) {
+  changeDetailQty(cartId, delta);
+}
+
+function changeDetailQty(cartId, delta) {
+  const item = S.cart.find(c => c.id === cartId);
+  if (!item) return;
+  item.qty += delta;
+  if (item.qty <= 0) S.cart = S.cart.filter(c => c.id !== cartId);
+  updateCartBadge();
+  const active = document.querySelector('.cat-tab.active');
+  if (active) renderMenuItems(active.textContent);
+  if (S.currentView === 'cart') renderCart();
+  const sheet = $('dish-detail-sheet');
+  if (sheet) updateDetailActionBar(sheet.dataset.itemId);
+}
+
+async function loadReviewsForDetail(itemId) {
+  const container = $('dish-reviews-container');
+  if (!container) return;
+
+  try {
+    const r = await callServer('getItemReviews', itemId);
+    if (r.success && r.data) {
+      renderReviewsData(itemId, r.data);
+    } else {
+      container.innerHTML = `<div class="reviews-empty-state"><div class="reviews-empty-icon">⚠️</div><p>${r.message || 'Failed to load reviews'}</p></div>`;
+    }
+  } catch (e) {
+    container.innerHTML = `<div class="reviews-empty-state"><div class="reviews-empty-icon">📡</div><p>Working Offline — Reviews unavailable</p></div>`;
+  }
+}
+
+function renderReviewsData(itemId, data) {
+  const container = $('dish-reviews-container');
+  if (!container) return;
+
+  const reviews = data.reviews || [];
+  const stats = data.stats || { avgRating: 0, totalCount: 0, starBreakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } };
+  const total = stats.totalCount;
+
+  // Star breakdown rows generator
+  let breakdownRowsHtml = '';
+  for (let i = 5; i >= 1; i--) {
+    const count = stats.starBreakdown[i] || 0;
+    const percent = total > 0 ? (count / total) * 100 : 0;
+    breakdownRowsHtml += `
+      <div class="reviews-breakdown-row">
+        <span class="reviews-breakdown-starlabel">${i} ★</span>
+        <div class="reviews-breakdown-bar-bg">
+          <div class="reviews-breakdown-bar-fill" style="width: ${percent}%"></div>
+        </div>
+        <span class="reviews-breakdown-count">${count}</span>
+      </div>
+    `;
+  }
+
+  // Reviews List Generator
+  let listHtml = '';
+  if (reviews.length === 0) {
+    listHtml = `
+      <div class="reviews-empty-state">
+        <div class="reviews-empty-icon">✨</div>
+        <p>No reviews yet. Be the first to share your thoughts!</p>
+      </div>
+    `;
+  } else {
+    listHtml = reviews.map(rev => {
+      const avatarLetter = rev.name ? rev.name.charAt(0) : 'A';
+      const dateLabel = formatReviewDate(rev.timestamp);
+      const starString = '★'.repeat(rev.rating) + '☆'.repeat(5 - rev.rating);
+      
+      // Highlight own review if phone matches (loosely based on masking)
+      const isOwnReview = S.user && rev.phone && rev.phone.substring(0, 4) === S.user.phone.substring(0, 4);
+      const highlightClass = isOwnReview ? 'review-own-highlight' : '';
+      const ownTag = isOwnReview ? '<span class="review-own-tag">Your Review</span>' : '';
+
+      return `
+        <div class="review-list-card ${highlightClass}">
+          <div class="review-list-header">
+            <div class="review-list-user-info">
+              <div class="review-list-avatar">${avatarLetter}</div>
+              <div>
+                <div class="review-list-name" style="display:flex;align-items:center;gap:6px">${rev.name} ${ownTag}</div>
+                <div class="review-list-stars">${starString}</div>
+              </div>
+            </div>
+            <div class="review-list-date">${dateLabel}</div>
+          </div>
+          <p class="review-list-text">${rev.text || 'Liked this dish'}</p>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Write Review form generator
+  let writeFormHtml = '';
+  if (!S.user) {
+    writeFormHtml = `
+      <div class="write-review-card" style="text-align: center; padding: 20px;">
+        <div class="write-review-title" style="justify-content: center;">📝 Rate this dish</div>
+        <p style="font-size: 0.8rem; color: var(--text2); margin-bottom: 12px;">You must be logged in to post reviews.</p>
+        <button class="btn btn-secondary btn-sm" onclick="closeDishDetail(); showAuth('login');">Login / Sign Up</button>
+      </div>
+    `;
+  } else {
+    // If user already reviewed, show thank you note instead of double submissions
+    const userMaskedPhone = S.user.phone.substring(0, 6) + 'XXXX';
+    const hasReviewed = reviews.some(r => r.phone === userMaskedPhone);
+    
+    if (hasReviewed) {
+      writeFormHtml = `
+        <div class="write-review-card" style="text-align: center; border-style: solid; background: rgba(16, 185, 129, 0.03); border-color: rgba(16, 185, 129, 0.2);">
+          <div class="write-review-title" style="justify-content: center; color: var(--success);">✅ Review Submitted</div>
+          <p style="font-size: 0.82rem; color: var(--text2);">You have already shared your feedback for this item. Thank you!</p>
+        </div>
+      `;
+    } else {
+      writeFormHtml = `
+        <div class="write-review-card">
+          <div class="write-review-title">✍️ Review this Dish</div>
+          <div class="write-review-stars-container" id="detail-star-input-container" data-rating="0">
+            <span class="write-review-star" data-value="1" onclick="setDetailStarRating(1)">★</span>
+            <span class="write-review-star" data-value="2" onclick="setDetailStarRating(2)">★</span>
+            <span class="write-review-star" data-value="3" onclick="setDetailStarRating(3)">★</span>
+            <span class="write-review-star" data-value="4" onclick="setDetailStarRating(4)">★</span>
+            <span class="write-review-star" data-value="5" onclick="setDetailStarRating(5)">★</span>
+          </div>
+          <textarea class="write-review-textarea" id="detail-review-text" placeholder="Share your experience (taste, quantity, spice level)..."></textarea>
+          <button class="btn btn-primary btn-sm btn-block" id="btn-submit-review" onclick="submitDetailReview('${itemId}')">Submit Review</button>
+        </div>
+      `;
+    }
+  }
+
+  const avgStarString = '★'.repeat(Math.round(stats.avgRating)) + '☆'.repeat(5 - Math.round(stats.avgRating));
+
+  container.innerHTML = `
+    <div class="reviews-summary-card">
+      <div class="reviews-summary-avg">
+        <div class="reviews-summary-avg-num">${stats.avgRating}</div>
+        <div class="reviews-summary-avg-stars">${avgStarString}</div>
+        <div class="reviews-summary-avg-count">${total} reviews</div>
+      </div>
+      <div class="reviews-breakdown-list">
+        ${breakdownRowsHtml}
+      </div>
+    </div>
+
+    <div class="dish-reviews-list">
+      ${listHtml}
+    </div>
+
+    ${writeFormHtml}
+  `;
+}
+
+function setDetailStarRating(rating) {
+  const container = $('detail-star-input-container');
+  if (!container) return;
+  container.dataset.rating = rating;
+  const stars = container.querySelectorAll('.write-review-star');
+  stars.forEach(star => {
+    const val = parseInt(star.dataset.value);
+    star.classList.toggle('active', val <= rating);
+  });
+}
+
+async function submitDetailReview(itemId) {
+  if (!S.user) {
+    showToast('Please login to submit reviews', 'error');
+    return;
+  }
+
+  const ratingContainer = $('detail-star-input-container');
+  const rating = ratingContainer ? parseInt(ratingContainer.dataset.rating) : 0;
+  if (!rating || rating < 1 || rating > 5) {
+    showToast('Please select a star rating', 'warning');
+    return;
+  }
+
+  const textInput = $('detail-review-text');
+  const text = textInput ? textInput.value.trim() : '';
+
+  const submitBtn = $('btn-submit-review');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+  }
+
+  try {
+    const r = await callServer('addReview', {
+      itemId: itemId,
+      rating: rating,
+      text: text,
+      name: S.user.name,
+      phone: S.user.phone
+    });
+
+    if (r.success) {
+      showToast('Thank you for your review!', 'success');
+      // Reload reviews dynamically
+      loadReviewsForDetail(itemId);
+    } else {
+      showToast(r.message, 'error');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Review';
+      }
+    }
+  } catch (e) {
+    showToast('Failed to submit review', 'error');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Review';
+    }
+  }
+}
+
+function renderRelatedDishes(item, category) {
+  const grid = $('dish-related-grid');
+  if (!grid) return;
+
+  const allItems = S.menu[category] || [];
+  // Exclude current item and pick up to 6 items
+  const related = allItems.filter(it => it.id !== item.id).slice(0, 6);
+
+  if (related.length === 0) {
+    const sect = grid.closest('.dish-related-section');
+    if (sect) sect.style.display = 'none';
+    return;
+  }
+
+  grid.innerHTML = related.map(it => {
+    const imgHtml = it.image ? 
+      `<img src="${it.image}" alt="${it.name}" loading="lazy">` : 
+      `🍛`;
+    
+    let priceStr = '₹' + it.price;
+    if (it.portions && it.portions.length > 0) {
+      priceStr = '₹' + Math.min(...it.portionPrices);
+    }
+
+    return `
+      <div class="dish-related-card" onclick="openDishDetail('${it.id}')">
+        <div class="dish-related-card-img">${imgHtml}</div>
+        <div class="dish-related-card-info">
+          <div class="dish-related-card-name">${it.name}</div>
+          <div class="dish-related-card-price">${priceStr}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function formatReviewDate(isoString) {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  const diffMs = Date.now() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+    if (diffHrs === 0) {
+      const diffMins = Math.floor(diffMs / (1000 * 60));
+      return diffMins <= 1 ? 'Just now' : `${diffMins}m ago`;
+    }
+    return `${diffHrs}h ago`;
+  }
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays}d ago`;
+  
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function initSwipeToDismiss(el, callback) {
+  let startY = 0;
+  let currentY = 0;
+  
+  el.addEventListener('touchstart', e => {
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  
+  el.addEventListener('touchmove', e => {
+    currentY = e.touches[0].clientY;
+    const diff = currentY - startY;
+    // Only swipe down when scrolled to top
+    if (diff > 0 && el.scrollTop === 0) {
+      el.style.transform = `translateY(${diff}px)`;
+      el.style.transition = 'none';
+    }
+  }, { passive: true });
+  
+  el.addEventListener('touchend', e => {
+    const diff = currentY - startY;
+    el.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+    if (diff > 120 && el.scrollTop === 0) {
+      callback();
+    } else {
+      el.style.transform = 'translateY(0)';
+    }
+    startY = 0;
+    currentY = 0;
+  }, { passive: true });
 }
