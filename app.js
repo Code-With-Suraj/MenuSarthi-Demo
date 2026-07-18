@@ -1793,6 +1793,30 @@ function switchAdminTab(btn,tabId){
 }
 
 // ===== ADMIN COMBO MANAGEMENT =====
+function resolveComboProperties() {
+  const menuItems = [];
+  if (S.adminMenu && S.adminMenu.length) {
+    menuItems.push(...S.adminMenu);
+  }
+  if (S.menu) {
+    for (const cat in S.menu) {
+      if (Array.isArray(S.menu[cat])) {
+        menuItems.push(...S.menu[cat]);
+      }
+    }
+  }
+
+  (S.combos || []).forEach(c => {
+    c.includedItems = c.items || '';
+    const itemIds = (c.items || '').split(',').map(s => s.trim());
+    const names = itemIds.map(id => {
+      const match = menuItems.find(item => item.id === id);
+      return match ? match.name : '';
+    }).filter(Boolean);
+    c.includedNames = names.join(', ');
+  });
+}
+
 async function loadAdminCombos() {
   const searchInput = $('admin-combos-search');
   if (searchInput && document.activeElement === searchInput) return;
@@ -1808,6 +1832,7 @@ async function loadAdminCombos() {
     const r = await callServer('getCombosData');
     if (r.success) {
       S.combos = r.data;
+      resolveComboProperties();
       renderAdminCombos();
     }
   } catch(e) {
@@ -2011,7 +2036,7 @@ async function saveNewCombo() {
   const data = {
     name,
     price,
-    includedItems: includedItemsStr,
+    items: includedItemsStr,
     image,
     available: true
   };
@@ -2053,7 +2078,7 @@ async function saveEditCombo(id) {
     id,
     name,
     price,
-    includedItems: includedItemsStr,
+    items: includedItemsStr,
     image,
     available: true
   };
@@ -3777,6 +3802,8 @@ function applyBootstrapData(d) {
     S.menu = d.menu.items || {};
     S.categories = d.menu.categories || [];
   }
+
+  resolveComboProperties();
   
   const config = S.config || {};
   
