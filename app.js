@@ -283,9 +283,16 @@ function navigateTo(view){
       view = 'maintenance';
     }
   }
-  if (view !== 'tracking' && S.revisionInterval) {
-    clearInterval(S.revisionInterval);
-    S.revisionInterval = null;
+  if (view !== 'tracking') {
+    if (S.revisionInterval) {
+      clearInterval(S.revisionInterval);
+      S.revisionInterval = null;
+    }
+    if (S.trackInterval) {
+      clearInterval(S.trackInterval);
+      S.trackInterval = null;
+    }
+    try { FirebaseSync.stopListeningToOrder(); } catch(e) {}
   }
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   const el=$('view-'+view);if(el)el.classList.add('active');
@@ -973,6 +980,27 @@ async function submitOrder(){
     const r=await callServer('placeOrder',data);hideLoader();
     if(r.success){
       S.currentOrder=r.data;
+      
+      // Sync placed order to Firebase Realtime Database
+      try {
+        FirebaseSync.pushOrder({
+          orderId: r.data.orderId,
+          status: 'Received',
+          table: data.tableNumber,
+          customerName: data.customerName,
+          customerPhone: data.customerPhone,
+          items: data.items,
+          total: r.data.total,
+          paymentStatus: 'Pending',
+          timestamp: r.data.timestamp || new Date().toISOString(),
+          specialInstructions: data.specialInstructions,
+          discountAmount: r.data.discountAmount || 0,
+          appliedOffer: r.data.appliedOfferCode || ''
+        });
+      } catch(fberr) {
+        console.error("Firebase sync error on placement:", fberr);
+      }
+
       S.cart=[];
       S.appliedOffer=null;
       S.discountAmount=0;
@@ -994,17 +1022,68 @@ async function submitOrder(){
 }
 
 // ===== ORDER TRACKING =====
-function startTracking(orderId){
-  if(S.trackInterval)clearInterval(S.trackInterval);
-  pollStatus(orderId);
-  S.trackInterval=setInterval(()=>pollStatus(orderId),30000)
+function startTracking(orderId) {
+  if (S.trackInterval) { clearInterval(S.trackInterval); S.trackInterval = null; }
+  try { FirebaseSync.stopListeningToOrder(); } catch(e) {}
+
+  // Run initial status poll from GAS to fetch data first time
+  pollStatus(orderId, true);
+
+  // Bind Firebase Realtime listener for instant updates
+  try {
+    FirebaseSync.listenToOrder(orderId, (orderData) => {
+      if (orderData) {
+        updateTrackingUI(orderData);
+        
+        // Push notification popup & sound to customer on status change
+        if (S._lastTrackedStatus && S._lastTrackedStatus !== orderData.status) {
+          const statusMsgs = {
+            'Preparing': '👨‍🍳 Your order is being prepared by our chef!',
+            'Ready': '🎉 Your food is READY! Please collect it.',
+            'Completed': '✅ Order completed. Thank you!'
+          };
+          if (statusMsgs[orderData.status]) {
+            showToast(statusMsgs[orderData.status], 'success');
+            try { new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH+Jj4WBfXx9gYeOkI2Jh4aIjJGUko+Nh4WGiY6UmJaSjomGhYaKkZibmpiTjYeFhYmPl5yenJiSjIiFhYqSmZ6gnpqUjoqHh4uUm6Chn5yXkY2Kio2Wnp+fnZqWkY6MjZGZnp6dnJmVkY+OkZabnZ2cm5mWlJKSlZqdnJycm5qYlpWUl5udnJycm5qZl5aWmZydnJycm5qZmJeYm52cnJybm5qZmJibnZ2dnJybm5qamZqcnZ2cnJybm5ubm5ydnZ2cnJybm5ubm5ydnZ2cnJybm5ubnJ2dnZ2cnJyb').play() } catch (e) {}
+          }
+        }
+        S._lastTrackedStatus = orderData.status;
+      }
+    });
+  } catch(e) {
+    console.error("Firebase tracking listener subscription failed:", e);
+  }
 }
 
-async function pollStatus(orderId){
-  try{
-    const r=await callServer('getOrderStatus',orderId);
-    if(r.success)updateTrackingUI(r.data);
-  }catch(e){}
+async function pollStatus(orderId, syncToFirebase = false) {
+  try {
+    const r = await callServer('getOrderStatus', orderId);
+    if (r.success) {
+      updateTrackingUI(r.data);
+      if (syncToFirebase) {
+        try {
+          FirebaseSync.pushOrder({
+            orderId: r.data.orderId,
+            status: r.data.status,
+            table: r.data.table,
+            customerName: r.data.customerName,
+            customerPhone: r.data.customerPhone,
+            items: r.data.items,
+            total: r.data.total,
+            paymentStatus: r.data.paymentStatus,
+            timestamp: r.data.timestamp,
+            specialInstructions: r.data.specialInstructions,
+            discountAmount: r.data.discountAmount,
+            appliedOffer: r.data.appliedOffer
+          });
+        } catch(fberr) {
+          console.error("Error syncing during pollStatus:", fberr);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error fetching order status:", e);
+  }
 }
 
 function updateTrackingUI(data){
@@ -1420,6 +1499,7 @@ async function triggerRazorpayPayment() {
           hideLoader();
           if (verifyRes.success) {
             showToast('Payment successful! 🎉', 'success');
+            try { FirebaseSync.updatePaymentStatus(S.payingOrderId, 'Paid'); } catch(e) {}
             const statusLabel = $('pay-status-label');
             if (statusLabel) {
               statusLabel.textContent = 'Paid';
@@ -1923,6 +2003,7 @@ async function handleAdminLogin(){
     if(r.success){
       S.isAdmin=true;
       saveAdminSession();
+      try { FirebaseSync.loginAdmin(); } catch(e) {}
       hide('admin-login-screen');
       show('admin-dashboard');
       // Check subscription status for admin
@@ -1943,6 +2024,7 @@ async function handleAdminLogin(){
 function handleAdminLogout(){
   clearAdminSession();
   if(S.adminInterval)clearInterval(S.adminInterval);
+  try { FirebaseSync.logoutAdmin(); } catch(e) {}
   show('admin-login-screen');
   hide('admin-dashboard');
   navigateTo('landing');
@@ -2755,6 +2837,7 @@ async function confirmPreparingETA(orderId, presetMinutes) {
     hideLoader();
     if (r.success) {
       showToast(r.message, 'success');
+      try { FirebaseSync.updateOrderStatus(orderId, 'Preparing', minutes); } catch(e) {}
       loadAdminData();
     } else {
       showToast(r.message, 'error');
@@ -2775,6 +2858,7 @@ async function refundOrder(orderId) {
     hideLoader();
     if (r.success) {
       showToast('Refund initiated successfully! 🎉', 'success');
+      try { FirebaseSync.updatePaymentStatus(orderId, 'Refunded'); } catch(e) {}
       loadAdminData();
     } else {
       showToast(r.message || 'Refund failed', 'error');
@@ -2786,7 +2870,14 @@ async function refundOrder(orderId) {
 }
 
 async function updateStatus(id,status,etaMinutes){
-  try{const r=await callServer('updateOrderStatus',id,status,etaMinutes);if(r.success){showToast(r.message,'success');loadAdminData()}else showToast(r.message,'error')}catch(e){showToast('Update failed','error')}
+  try{
+    const r=await callServer('updateOrderStatus',id,status,etaMinutes);
+    if(r.success){
+      showToast(r.message,'success');
+      try { FirebaseSync.updateOrderStatus(id, status, etaMinutes); } catch(e) {}
+      loadAdminData();
+    }else showToast(r.message,'error')
+  }catch(e){showToast('Update failed','error')}
 }
 
 async function deleteAdminOrder(id){
@@ -2797,6 +2888,7 @@ async function deleteAdminOrder(id){
     hideLoader();
     if(r.success){
       showToast(r.message,'success');
+      try { FirebaseSync.deleteOrder(id); } catch(e) {}
       loadAdminData();
     }else{
       showToast(r.message,'error');
@@ -2807,7 +2899,58 @@ async function deleteAdminOrder(id){
   }
 }
 
-function startAdminRefresh(){if(S.adminInterval)clearInterval(S.adminInterval);S.adminInterval=setInterval(loadAdminData,15000)}
+function startAdminRefresh() {
+  if (S.adminInterval) { clearInterval(S.adminInterval); S.adminInterval = null; }
+  try { FirebaseSync.stopListeningToLiveOrders(); } catch(e) {}
+  
+  // Load initially once
+  loadAdminData();
+  
+  // Subscribe to real-time updates for all live orders
+  try {
+    FirebaseSync.listenToLiveOrders((allOrders) => {
+      if (!allOrders) {
+        S.adminOrders = [];
+        renderAdminOrders([]);
+        return;
+      }
+      
+      // Filter out completed ones, keep sorting
+      const liveOrders = Object.values(allOrders)
+        .filter(o => o.status && o.status !== 'Completed')
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+      // Sound alert for new incoming orders
+      if (liveOrders.length > S.adminOrderCount && S.adminOrderCount > 0) {
+        showToast('🔔 New order received!', 'success');
+        try {
+          new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH+Jj4WBfXx9gYeOkI2Jh4aIjJGUko+Nh4WGiY6UmJaSjomGhYaKkZibmpiTjYeFhYmPl5yenJiSjIiFhYqSmZ6gnpqUjoqHh4uUm6Chn5yXkY2Kio2Wnp+fnZqWkY6MjZGZnp6dnJmVkY+OkZabnZ2cm5mWlJKSlZqdnJycm5qYlpWUl5udnJycm5qZl5aWmZydnJycm5qZmJeYm52cnJybm5qZmJibnZ2dnJybm5qamZqcnZ2cnJybm5ubm5ydnZ2cnJybm5ubm5ydnZ2cnJybm5ubnJ2dnZ2cnJyb').play();
+        } catch (e) {}
+      }
+      S.adminOrders = liveOrders;
+      S.adminOrderCount = liveOrders.length;
+      renderAdminOrders(liveOrders);
+    });
+  } catch (err) {
+    console.error("Firebase admin live orders listener failed:", err);
+  }
+  
+  // Stats and insights update periodically (every 60 seconds)
+  S.adminInterval = setInterval(async () => {
+    try {
+      if (isAdminSearching()) return;
+      const stats = await callServer('getOrderStats');
+      if (stats.success) {
+        const d = stats.data;
+        $('stat-total').textContent = d.totalOrders;
+        $('stat-revenue').textContent = '₹' + d.totalRevenue;
+        $('stat-active').textContent = d.activeOrders;
+        $('stat-avg').textContent = '₹' + d.avgOrderValue;
+        renderDashboardInsights(d, S.adminOrders);
+      }
+    } catch(e) {}
+  }, 60000);
+}
 
 async function loadAdminMenu(){
   try{
@@ -4339,6 +4482,7 @@ function applyBootstrapData(d) {
 }
 
 async function init(){
+  try { FirebaseSync.init(); } catch(e) {}
   if(S.table){$('table-badge').style.display='flex';$('table-display').textContent=S.table}
   // Restore session
   if(loadSession()){
@@ -4349,6 +4493,7 @@ async function init(){
   // Restore admin session
   if(loadAdminSession()){
     S.isAdmin=true;
+    try { FirebaseSync.loginAdmin(); } catch(e) {}
     hide('admin-login-screen');
     show('admin-dashboard');
   }
