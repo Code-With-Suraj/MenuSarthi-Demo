@@ -31,13 +31,29 @@ const FirebaseSync = {
   },
 
   // Authenticate admin in Firebase using email/password
-  async loginAdmin(email = "admin@menusarthi.com", password = "menusarthiadmin") {
+  async loginAdmin() {
     await this.init();
+    
+    const spreadsheetId = CONFIG.SPREADSHEET_ID || "default";
+    const email = `admin_${spreadsheetId}@menusarthi.com`;
+    const password = `auth_${spreadsheetId}`;
+
     try {
       await firebase.auth().signInWithEmailAndPassword(email, password);
       console.log("Admin authenticated in Firebase.");
       return true;
     } catch (e) {
+      // If user doesn't exist (invalid-credential or user-not-found), try to create it programmatically
+      if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
+        try {
+          console.log("Admin user not found in Firebase. Creating dynamically...");
+          await firebase.auth().createUserWithEmailAndPassword(email, password);
+          console.log("Admin user created and authenticated in Firebase.");
+          return true;
+        } catch (createErr) {
+          console.error("Failed to create admin user programmatically:", createErr);
+        }
+      }
       console.error("Admin Firebase authentication failed:", e);
       return false;
     }
