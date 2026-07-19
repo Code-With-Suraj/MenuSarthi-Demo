@@ -2667,25 +2667,81 @@ function renderAdminMenu(){
 async function toggleAvail(id){try{await callServer('toggleItemAvailability',id);showToast('Updated','success')}catch(e){showToast('Failed','error')}}
 async function deleteItem(id,name){if(!confirm('Delete '+decodeURIComponent(name)+'?'))return;try{const r=await callServer('deleteMenuItem',id);if(r.success){showToast('Deleted','success');loadAdminMenu()}else showToast(r.message,'error')}catch(e){showToast('Failed','error')}}
 
+function getCategorySelectHTML(selectedValue = '') {
+  const categories = S.categories && S.categories.length ? S.categories : ['Starters', 'Main Course', 'Breads', 'Beverages', 'Desserts'];
+  
+  let options = categories.map(cat => {
+    const selected = cat === selectedValue ? ' selected' : '';
+    return `<option value="${cat}"${selected}>${cat}</option>`;
+  });
+  
+  if (selectedValue && !categories.includes(selectedValue)) {
+    options.unshift(`<option value="${selectedValue}" selected>${selectedValue}</option>`);
+  }
+  
+  options.push('<option value="__new__">+ Add New Category...</option>');
+  
+  return `
+    <div class="input-group">
+      <label>Category</label>
+      <select id="mi-cat" onchange="handleCategorySelection(this.value)">
+        ${options.join('')}
+      </select>
+      <div id="new-category-group" class="hidden" style="margin-top: 10px;">
+        <label style="font-size:0.8rem;color:var(--secondary)">New Category Name</label>
+        <input id="mi-new-cat" type="text" placeholder="Enter new category name">
+      </div>
+    </div>
+  `;
+}
+
+function handleCategorySelection(val) {
+  const newCatGroup = $('new-category-group');
+  if (newCatGroup) {
+    if (val === '__new__') {
+      newCatGroup.classList.remove('hidden');
+      $('mi-new-cat').focus();
+    } else {
+      newCatGroup.classList.add('hidden');
+      $('mi-new-cat').value = '';
+    }
+  }
+}
+
 function showAddItemModal(){
-  const html='<div class="modal-header"><h3>Add Menu Item</h3><button class="modal-close" onclick="closeModal()">✕</button></div><div class="input-group"><label>Category</label><select id="mi-cat"><option>Starters</option><option>Main Course</option><option>Breads</option><option>Beverages</option><option>Desserts</option></select></div><div class="input-group"><label>Name</label><input id="mi-name" placeholder="Item name"></div><div class="input-group"><label>Description</label><input id="mi-desc" placeholder="Short description"></div><div class="input-group"><label>Price (₹) (Single Portion)</label><input id="mi-price" type="number" placeholder="0"></div><div class="input-group"><label>Portions (comma-separated, optional)</label><input id="mi-portions" placeholder="e.g. Half,Full"></div><div class="input-group"><label>Portion Prices (comma-separated, optional)</label><input id="mi-portion-prices" placeholder="e.g. 149,249"></div><div class="input-group"><label>Image URL</label><input id="mi-img" placeholder="https://..."></div><div class="input-group"><label>Type</label><select id="mi-type"><option>Veg</option><option>Non-Veg</option></select></div><button class="btn btn-primary btn-block" onclick="saveNewItem()">Add Item</button>';
-  $('modal-content').innerHTML=html;$('modal-overlay').classList.add('active')
+  const html = '<div class="modal-header"><h3>Add Menu Item</h3><button class="modal-close" onclick="closeModal()">✕</button></div>' +
+    getCategorySelectHTML() +
+    '<div class="input-group"><label>Name</label><input id="mi-name" placeholder="Item name"></div><div class="input-group"><label>Description</label><input id="mi-desc" placeholder="Short description"></div><div class="input-group"><label>Price (₹) (Single Portion)</label><input id="mi-price" type="number" placeholder="0"></div><div class="input-group"><label>Portions (comma-separated, optional)</label><input id="mi-portions" placeholder="e.g. Half,Full"></div><div class="input-group"><label>Portion Prices (comma-separated, optional)</label><input id="mi-portion-prices" placeholder="e.g. 149,249"></div><div class="input-group"><label>Image URL</label><input id="mi-img" placeholder="https://..."></div><div class="input-group"><label>Type</label><select id="mi-type"><option>Veg</option><option>Non-Veg</option></select></div><button class="btn btn-primary btn-block" onclick="saveNewItem()">Add Item</button>';
+  $('modal-content').innerHTML=html;$('modal-overlay').classList.add('active');
 }
 
 function showEditItemModal(id,encoded){
   const it=JSON.parse(decodeURIComponent(encoded));
-  const html='<div class="modal-header"><h3>Edit Item</h3><button class="modal-close" onclick="closeModal()">✕</button></div><div class="input-group"><label>Category</label><input id="mi-cat" value="'+it.category+'"></div><div class="input-group"><label>Name</label><input id="mi-name" value="'+it.name+'"></div><div class="input-group"><label>Description</label><input id="mi-desc" value="'+(it.description||'')+'"></div><div class="input-group"><label>Price (Single Portion)</label><input id="mi-price" type="number" value="'+it.price+'"></div><div class="input-group"><label>Portions (comma-separated)</label><input id="mi-portions" value="'+(it.portions||'')+'" placeholder="e.g. Half,Full"></div><div class="input-group"><label>Portion Prices (comma-separated)</label><input id="mi-portion-prices" value="'+(it.portionPrices||'')+'" placeholder="e.g. 149,249"></div><div class="input-group"><label>Image URL</label><input id="mi-img" value="'+(it.image||'')+'"></div><div class="input-group"><label>Type</label><select id="mi-type"><option'+(it.type==='Veg'?' selected':'')+'>Veg</option><option'+(it.type==='Non-Veg'?' selected':'')+'>Non-Veg</option></select></div><button class="btn btn-primary btn-block" onclick="saveEditItem(\''+id+'\')">Save Changes</button>';
-  $('modal-content').innerHTML=html;$('modal-overlay').classList.add('active')
+  const html = '<div class="modal-header"><h3>Edit Item</h3><button class="modal-close" onclick="closeModal()">✕</button></div>' +
+    getCategorySelectHTML(it.category) +
+    '<div class="input-group"><label>Name</label><input id="mi-name" value="'+it.name+'"></div><div class="input-group"><label>Description</label><input id="mi-desc" value="'+(it.description||'')+'"></div><div class="input-group"><label>Price (Single Portion)</label><input id="mi-price" type="number" value="'+it.price+'"></div><div class="input-group"><label>Portions (comma-separated)</label><input id="mi-portions" value="'+(it.portions||'')+'" placeholder="e.g. Half,Full"></div><div class="input-group"><label>Portion Prices (comma-separated)</label><input id="mi-portion-prices" value="'+(it.portionPrices||'')+'" placeholder="e.g. 149,249"></div><div class="input-group"><label>Image URL</label><input id="mi-img" value="'+(it.image||'')+'"></div><div class="input-group"><label>Type</label><select id="mi-type"><option'+(it.type==='Veg'?' selected':'')+'>Veg</option><option'+(it.type==='Non-Veg'?' selected':'')+'>Non-Veg</option></select></div><button class="btn btn-primary btn-block" onclick="saveEditItem(\''+id+'\')">Save Changes</button>';
+  $('modal-content').innerHTML=html;$('modal-overlay').classList.add('active');
+  handleCategorySelection(it.category);
 }
 
 async function saveNewItem(){
-  const data={category:$('mi-cat').value,name:$('mi-name').value,description:$('mi-desc').value,price:$('mi-price').value,image:$('mi-img').value,type:$('mi-type').value,portions:$('mi-portions').value,portionPrices:$('mi-portion-prices').value};
+  let category = $('mi-cat').value;
+  if (category === '__new__') {
+    category = ($('mi-new-cat').value || '').trim();
+    if (!category) return showToast('New category name required', 'error');
+  }
+  const data={category,name:$('mi-name').value,description:$('mi-desc').value,price:$('mi-price').value,image:$('mi-img').value,type:$('mi-type').value,portions:$('mi-portions').value,portionPrices:$('mi-portion-prices').value};
   if(!data.name||!data.price)return showToast('Name and price required','error');
   showLoader('Adding...');try{const r=await callServer('addMenuItem',data);hideLoader();if(r.success){showToast('Added!','success');closeModal();loadAdminMenu()}else showToast(r.message,'error')}catch(e){hideLoader();showToast('Failed','error')}
 }
 
 async function saveEditItem(id){
-  const data={id,category:$('mi-cat').value,name:$('mi-name').value,description:$('mi-desc').value,price:$('mi-price').value,image:$('mi-img').value,type:$('mi-type').value,available:true,portions:$('mi-portions').value,portionPrices:$('mi-portion-prices').value};
+  let category = $('mi-cat').value;
+  if (category === '__new__') {
+    category = ($('mi-new-cat').value || '').trim();
+    if (!category) return showToast('New category name required', 'error');
+  }
+  const data={id,category,name:$('mi-name').value,description:$('mi-desc').value,price:$('mi-price').value,image:$('mi-img').value,type:$('mi-type').value,available:true,portions:$('mi-portions').value,portionPrices:$('mi-portion-prices').value};
   showLoader('Saving...');try{const r=await callServer('updateMenuItem',data);hideLoader();if(r.success){showToast('Saved!','success');closeModal();loadAdminMenu()}else showToast(r.message,'error')}catch(e){hideLoader();showToast('Failed','error')}
 }
 
