@@ -1,0 +1,18 @@
+{
+  "name": "MenuSarthi — Digital Menu",
+  "short_name": "MenuSarthi",
+  "description": "Browse, customize, and place your order instantly with MenuSarthi — your smart digital menu companion.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#08090c",
+  "theme_color": "#ff5e14",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://em-content.zobj.net/source/apple/391/fork-and-knife-with-plate_1f37d-fe0f.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

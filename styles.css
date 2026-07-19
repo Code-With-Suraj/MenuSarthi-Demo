@@ -5390,3 +5390,107 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+
+/* ===== PWA APP INSTALLATION UI ===== */
+.pwa-banner {
+  position: fixed;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: var(--max-w);
+  padding: 16px;
+  border-radius: var(--radius);
+  background: rgba(13, 14, 18, 0.95);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  z-index: 1001;
+  animation: pwaSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes pwaSlideUp {
+  from {
+    transform: translate(-50%, 30px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+.pwa-banner-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 4px;
+  line-height: 1;
+}
+
+.pwa-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pwa-banner-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+}
+
+.pwa-banner-text {
+  min-width: 0;
+}
+
+.pwa-banner-text h4 {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.pwa-banner-text p {
+  font-size: 0.75rem;
+  color: var(--text3);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.sidebar-install-btn {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 94, 20, 0.1);
+  border: 1px dashed rgba(255, 94, 20, 0.3);
+  color: var(--secondary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  text-align: left;
+}
+
+.sidebar-install-btn:hover {
+  background: var(--primary-gradient);
+  color: #08090c;
+  border-style: solid;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(255, 94, 20, 0.25);
+}
+
+.sidebar-install-btn:hover .nav-icon {
+  filter: brightness(0.1);
+}

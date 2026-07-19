@@ -34,6 +34,12 @@
   <link rel="apple-touch-icon" id="apple-touch-icon" href="https://em-content.zobj.net/source/apple/391/fork-and-knife-with-plate_1f37d-fe0f.png">
   <link rel="shortcut icon" id="favicon" href="https://em-content.zobj.net/source/apple/391/fork-and-knife-with-plate_1f37d-fe0f.png" type="image/png">
 
+  <!-- PWA Manifest & Meta -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MenuSarthi">
+
   <link rel="stylesheet" href="styles.css">
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
@@ -313,6 +319,9 @@
     </nav>
     
     <div class="sidebar-footer">
+      <button id="admin-sidebar-install" class="sidebar-install-btn" onclick="triggerPwaInstall()" style="display:none; margin-bottom: 10px; align-items: center; justify-content: center; gap: 8px; width: 100%;">
+        📱 Install App
+      </button>
       <button class="btn btn-danger-glow btn-block btn-sm" onclick="handleAdminLogout()">
         🚪 Logout
       </button>
@@ -874,6 +883,19 @@
   <div class="loader-overlay" id="loader-overlay">
     <div class="loader-spinner"></div>
     <div class="loader-text" id="loader-text">Loading...</div>
+  </div>
+
+  <!-- PWA Install Banner (Sleek Floating Card) -->
+  <div id="pwa-install-banner" class="pwa-banner hidden glass">
+    <span class="pwa-banner-close" onclick="dismissPwaBanner()">✕</span>
+    <div class="pwa-banner-content">
+      <span class="pwa-banner-icon">📱</span>
+      <div class="pwa-banner-text">
+        <h4 id="pwa-title">Install MenuSarthi App</h4>
+        <p id="pwa-desc">Access our digital menu instantly from your home screen!</p>
+      </div>
+    </div>
+    <button id="pwa-btn-install" class="btn btn-primary btn-sm" onclick="triggerPwaInstall()" style="margin-bottom:0">Install</button>
   </div>
 
 </div>

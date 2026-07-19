@@ -1864,6 +1864,13 @@ function switchAdminTab(btn,tabId){
   if($('admin-addons-search')) $('admin-addons-search').value = '';
   if($('admin-combos-search')) $('admin-combos-search').value = '';
 
+  // Show PWA install button in admin panel if supported
+  const adminInstallBtn = $('admin-sidebar-install');
+  if (adminInstallBtn) {
+    const isSupported = deferredPrompt || (typeof isIOSDevice === 'function' && isIOSDevice() && !isAppInstalled());
+    adminInstallBtn.style.display = isSupported ? 'flex' : 'none';
+  }
+
   if(tabId==='admin-dashboard-tab')loadAdminData();
   if(tabId==='admin-menu-tab')loadAdminMenu();
   if(tabId==='admin-addons-tab')loadAdminAddOns();
@@ -4886,3 +4893,95 @@ function initSwipeToDismiss(el, callback) {
     currentY = 0;
   }, { passive: true });
 }
+
+// ===== PWA INSTALLATION PROCESS LOGIC =====
+let deferredPrompt = null;
+
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(reg => console.log('MenuSarthi Service Worker registered successfully', reg))
+      .catch(err => console.log('MenuSarthi Service Worker registration failed', err));
+  });
+}
+
+// Check if running on iOS device
+function isIOSDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+// Check if app is already running in standalone mode (installed)
+function isAppInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+// Initialize PWA Installation Prompts
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  
+  // Show install button in admin sidebar if available
+  const adminInstallBtn = $('admin-sidebar-install');
+  if (adminInstallBtn) {
+    adminInstallBtn.style.display = 'flex';
+  }
+  
+  // Show floating banner in customer view
+  showPwaInstallBanner();
+});
+
+function showPwaInstallBanner() {
+  const banner = $('pwa-install-banner');
+  if (!banner) return;
+  
+  // Do not show if dismissed in this session
+  if (localStorage.getItem('ms_pwa_dismissed') === 'true') return;
+  if (isAppInstalled()) return;
+
+  // Custom styling and text for iOS Safari users
+  if (isIOSDevice()) {
+    const titleEl = $('pwa-title');
+    const descEl = $('pwa-desc');
+    const btnEl = $('pwa-btn-install');
+    
+    if (titleEl) titleEl.textContent = 'Add to Home Screen';
+    if (descEl) descEl.textContent = 'Tap Share button (📤) at the bottom and select "Add to Home Screen".';
+    if (btnEl) btnEl.style.display = 'none'; // hide trigger button since iOS uses share menu
+  }
+
+  banner.classList.remove('hidden');
+}
+
+async function triggerPwaInstall() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    deferredPrompt = null;
+    
+    // Hide buttons after prompt interaction
+    const banner = $('pwa-install-banner');
+    if (banner) banner.classList.add('hidden');
+    
+    const adminInstallBtn = $('admin-sidebar-install');
+    if (adminInstallBtn) adminInstallBtn.style.display = 'none';
+  } else if (isIOSDevice()) {
+    showToast('Safari menu check: Tap Share (📤) -> Add to Home Screen', 'info');
+  } else {
+    showToast('To install: click browser options menu (⋮) -> Install App / Add to Home screen', 'info');
+  }
+}
+
+function dismissPwaBanner() {
+  const banner = $('pwa-install-banner');
+  if (banner) banner.classList.add('hidden');
+  localStorage.setItem('ms_pwa_dismissed', 'true');
+}
+
+// Auto-trigger banner logic for iOS/Safari users shortly after startup
+setTimeout(() => {
+  if (isIOSDevice() && !isAppInstalled() && localStorage.getItem('ms_pwa_dismissed') !== 'true') {
+    showPwaInstallBanner();
+  }
+}, 5000);
