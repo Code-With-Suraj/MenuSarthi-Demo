@@ -219,6 +219,13 @@ const FirebaseSync = {
 
     this.stopListeningToLiveOrders();
 
+    const currentUser = firebase.auth().currentUser;
+    console.log("FirebaseSync: Subscribing to live orders. Current Auth state:", {
+      uid: currentUser ? currentUser.uid : null,
+      email: currentUser ? currentUser.email : null,
+      isAnonymous: currentUser ? currentUser.isAnonymous : null
+    });
+
     this.liveOrdersListener = ordersRef.on('value', (snapshot) => {
       const val = snapshot.val();
       callback(val);
