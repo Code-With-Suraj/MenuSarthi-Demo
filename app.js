@@ -5245,6 +5245,7 @@ function renderAdminOffers() {
         <div class="admin-offer-meta-row">
           <div>Min Order: <span class="admin-offer-meta-val">₹${o.minOrderValue}</span></div>
           <div>Value: <span class="admin-offer-meta-val">${valLabel}</span></div>
+          <div>Per Account: <span class="admin-offer-meta-val" style="${(o.maxUsagePerAccount && o.maxUsagePerAccount > 0) ? 'color:var(--warning)' : 'color:var(--success)'}">${(o.maxUsagePerAccount && o.maxUsagePerAccount > 0) ? o.maxUsagePerAccount + 'x' : '∞ Unlimited'}</span></div>
         </div>
         
         <div class="admin-offer-actions">
@@ -5299,6 +5300,12 @@ function showAddOfferModal() {
       <div class="input-group">
         <label>Description</label>
         <input type="text" id="offer-form-description" placeholder="Get 10% off on orders above ₹200">
+      </div>
+
+      <div class="input-group">
+        <label style="display:flex;align-items:center;gap:6px;">🔒 Max Uses Per Account <span style="font-size:0.75rem;color:var(--text3);font-weight:400;">(0 = Unlimited)</span></label>
+        <input type="number" id="offer-form-max-usage" placeholder="0" min="0" style="">
+        <span style="font-size:0.75rem;color:var(--text3);margin-top:4px;display:block;">Set how many times a single customer account can redeem this offer. Leave 0 for no restriction.</span>
       </div>
 
       <div style="display:flex;gap:12px;margin-top:12px">
@@ -5360,6 +5367,12 @@ function showEditOfferModal(offerId) {
       <div class="input-group">
         <label>Description</label>
         <input type="text" id="offer-form-description" value="${offer.description}" placeholder="Get 10% off on orders above ₹200">
+      </div>
+
+      <div class="input-group">
+        <label style="display:flex;align-items:center;gap:6px;">🔒 Max Uses Per Account <span style="font-size:0.75rem;color:var(--text3);font-weight:400;">(0 = Unlimited)</span></label>
+        <input type="number" id="offer-form-max-usage" value="${offer.maxUsagePerAccount || 0}" placeholder="0" min="0">
+        <span style="font-size:0.75rem;color:var(--text3);margin-top:4px;display:block;">Set how many times a single customer account can redeem this offer. Leave 0 for no restriction.</span>
       </div>
 
       <div class="gst-toggle-row" style="margin-bottom:0">
@@ -5471,27 +5484,33 @@ function populateFreeDishList(selectedId) {
 
   const selectedValue = selectedId || 'any';
 
+  // Any Dish Option Row
+  const isAnySelected = selectedValue === 'any';
   let html = `
-    <label style="display:flex; align-items:center; gap:10px; padding:8px; border-radius:var(--radius-xs); cursor:pointer; border:1px solid ${selectedValue === 'any' ? 'var(--primary)' : 'transparent'}; background:${selectedValue === 'any' ? 'rgba(255,94,20,0.05)' : 'transparent'};" class="free-dish-option-row" data-id="any">
-      <input type="radio" name="freeDishSelect" value="any" ${selectedValue === 'any' ? 'checked' : ''} onchange="setFreeDishValue('any')" style="accent-color:var(--primary);">
-      <div style="display:flex; flex-direction:column;">
-        <strong style="font-size:0.85rem; color:var(--text1);">Any Dish (Cheapest in Cart)</strong>
-        <span style="font-size:0.7rem; color:var(--text3);">Waive price of cheapest item in cart.</span>
+    <div style="display:flex; align-items:center; gap:12px; padding:10px; border-radius:var(--radius-xs); cursor:pointer; border:1px solid ${isAnySelected ? 'var(--primary)' : 'var(--border)'}; background:${isAnySelected ? 'rgba(255,94,20,0.08)' : 'rgba(255,255,255,0.02)'}; transition: all 0.2s;" class="free-dish-option-row" data-id="any" onclick="setFreeDishValue('any')">
+      <div class="custom-radio-circle" style="width:18px; height:18px; border-radius:50%; border:2px solid ${isAnySelected ? 'var(--primary)' : 'var(--text3)'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:${isAnySelected ? 'var(--primary)' : 'transparent'}; transition:all 0.2s;">
+        ${isAnySelected ? '<div style="width:6px; height:6px; border-radius:50%; background:#fff;"></div>' : ''}
       </div>
-    </label>
+      <div style="display:flex; flex-direction:column; flex:1;">
+        <strong style="font-size:0.85rem; color:var(--text1);">🌟 Any Dish (Cheapest in Cart)</strong>
+        <span style="font-size:0.7rem; color:var(--text3); margin-top:2px;">Waive price of cheapest item in cart.</span>
+      </div>
+    </div>
   `;
 
   allItems.forEach(item => {
     const isSelected = selectedValue === item.id;
     const categoryName = item.category || 'Menu';
     html += `
-      <label style="display:flex; align-items:center; gap:10px; padding:8px; border-radius:var(--radius-xs); cursor:pointer; border:1px solid ${isSelected ? 'var(--primary)' : 'transparent'}; background:${isSelected ? 'rgba(255,94,20,0.05)' : 'transparent'};" class="free-dish-option-row" data-id="${item.id}">
-        <input type="radio" name="freeDishSelect" value="${item.id}" ${isSelected ? 'checked' : ''} onchange="setFreeDishValue('${item.id}')" style="accent-color:var(--primary);">
-        <div style="display:flex; flex-direction:column;">
-          <strong style="font-size:0.85rem; color:var(--text1);">${item.name}</strong>
-          <span style="font-size:0.7rem; color:var(--text3);">Price: ₹${item.price} | Category: ${categoryName}</span>
+      <div style="display:flex; align-items:center; gap:12px; padding:10px; border-radius:var(--radius-xs); cursor:pointer; border:1px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}; background:${isSelected ? 'rgba(255,94,20,0.08)' : 'rgba(255,255,255,0.02)'}; transition: all 0.2s; margin-top:4px;" class="free-dish-option-row" data-id="${item.id}" onclick="setFreeDishValue('${item.id}')">
+        <div class="custom-radio-circle" style="width:18px; height:18px; border-radius:50%; border:2px solid ${isSelected ? 'var(--primary)' : 'var(--text3)'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:${isSelected ? 'var(--primary)' : 'transparent'}; transition:all 0.2s;">
+          ${isSelected ? '<div style="width:6px; height:6px; border-radius:50%; background:#fff;"></div>' : ''}
         </div>
-      </label>
+        <div style="display:flex; flex-direction:column; flex:1;">
+          <strong style="font-size:0.85rem; color:var(--text1);">${item.name}</strong>
+          <span style="font-size:0.7rem; color:var(--text3); margin-top:2px;">Price: ₹${item.price} | Category: ${categoryName}</span>
+        </div>
+      </div>
     `;
   });
 
@@ -5504,8 +5523,15 @@ function setFreeDishValue(val) {
   document.querySelectorAll('.free-dish-option-row').forEach(row => {
     const id = row.dataset.id;
     const isSelected = id === val;
-    row.style.borderColor = isSelected ? 'var(--primary)' : 'transparent';
-    row.style.background = isSelected ? 'rgba(255,94,20,0.05)' : 'transparent';
+    row.style.borderColor = isSelected ? 'var(--primary)' : 'var(--border)';
+    row.style.background = isSelected ? 'rgba(255,94,20,0.08)' : 'rgba(255,255,255,0.02)';
+    
+    const circle = row.querySelector('.custom-radio-circle');
+    if (circle) {
+      circle.style.borderColor = isSelected ? 'var(--primary)' : 'var(--text3)';
+      circle.style.background = isSelected ? 'var(--primary)' : 'transparent';
+      circle.innerHTML = isSelected ? '<div style="width:6px; height:6px; border-radius:50%; background:#fff;"></div>' : '';
+    }
   });
   autoSuggestDescription();
 }
@@ -5540,6 +5566,7 @@ async function saveOffer() {
   const activeEl = $('offer-form-active');
   const isActive = activeEl ? activeEl.checked : true;
   const freeDishId = type === 'free_dish' ? $('offer-form-free-dish').value : '';
+  const maxUsagePerAccount = parseInt($('offer-form-max-usage') ? $('offer-form-max-usage').value : '0') || 0;
   
   if (!code) return showToast('Please enter an offer code', 'error');
   if (!description) return showToast('Please enter a description', 'error');
@@ -5554,7 +5581,8 @@ async function saveOffer() {
     freeDishId,
     minOrderValue: minVal,
     description,
-    isActive
+    isActive,
+    maxUsagePerAccount
   };
   if (isEdit) data.id = idEl.value;
   
