@@ -3,7 +3,7 @@ const INIT_TABLE = urlParams.get('table') || '';
 const INIT_PAGE = urlParams.get('page') || 'customer';
 
 const SESSION_KEY='ms_session';const ADMIN_SESSION_KEY='ms_admin_session';const SESSION_TTL=2*60*60*1000;
-const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null,currentOrderDetails:null,combos:[]};
+const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null,currentOrderDetails:null,combos:[],offers:[],appliedOffer:null,discountAmount:0};
 
 // ===== CLIENT-SIDE DATA CACHE (BOOTSTRAP LOADING & OFFLINE RESILIENCY) =====
 const DataCache = {
@@ -628,6 +628,8 @@ function clearCart(){
     }
   }
   S.cart=[];
+  S.appliedOffer=null;
+  S.discountAmount=0;
   updateCartBadge();
   renderCart();
   showToast('Cart cleared','info');
@@ -670,16 +672,100 @@ function renderCart(){
   
   const subtotal=S.cart.reduce((s,c)=>s+c.price*c.qty,0);
   const itemCount=S.cart.reduce((s,c)=>s+c.qty,0);
+
+  // Recalculate discount
+  let discountAmt = 0;
+  if (S.appliedOffer) {
+    if (subtotal < S.appliedOffer.minOrderValue) {
+      const removedCode = S.appliedOffer.code;
+      S.appliedOffer = null;
+      S.discountAmount = 0;
+      // Use setTimeout to avoid interfering with render loop Toast showing
+      setTimeout(() => showToast(`Offer ${removedCode} removed as minimum order value not met`, 'warning'), 100);
+    } else {
+      if (S.appliedOffer.type === 'discount_percent') {
+        discountAmt = Math.round((subtotal * S.appliedOffer.value / 100) * 100) / 100;
+      } else if (S.appliedOffer.type === 'discount_flat') {
+        discountAmt = Math.min(subtotal, S.appliedOffer.value);
+      } else if (S.appliedOffer.type === 'free_dish') {
+        let minPrice = Infinity;
+        S.cart.forEach(c => {
+          if (c.price > 0 && c.price < minPrice) {
+            minPrice = c.price;
+          }
+        });
+        if (minPrice !== Infinity) {
+          discountAmt = minPrice;
+        }
+      }
+      S.discountAmount = discountAmt;
+    }
+  } else {
+    S.discountAmount = 0;
+  }
+
+  const taxableSubtotal = Math.max(0, subtotal - S.discountAmount);
   const gstOn=S.config&&S.config.gstEnabled;
   const gstRate=S.config?S.config.gstRate||5:5;
-  const gstAmt=gstOn?Math.round(subtotal*gstRate/100*100)/100:0;
-  const grandTotal=subtotal+gstAmt;
+  const gstAmt=gstOn?Math.round(taxableSubtotal*gstRate/100*100)/100:0;
+  const grandTotal=taxableSubtotal+gstAmt;
+
+  const discountLine = S.appliedOffer ? `<div class="row" style="color: var(--success); font-weight: 600;"><span>🏷️ Discount (${S.appliedOffer.code})</span><span>-₹${S.discountAmount.toFixed(2)}</span></div>` : '';
   const gstLine=gstOn?'<div class="row"><span>GST ('+gstRate+'%)</span><span>₹'+gstAmt.toFixed(2)+'</span></div>':'';
   const gstinLine=(gstOn&&S.config.gstNumber)?'<div style="font-size:.7rem;color:var(--text3);margin-top:6px;text-align:right">GSTIN: '+S.config.gstNumber+'</div>':'';
   
   if(!S.user){
-    cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+gstLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div><div class="checkout-section glass" style="padding:20px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius);margin-top:20px"><div style="font-size:1.5rem;margin-bottom:8px">🔒 Login Required</div><p style="font-size:.85rem;color:var(--text2);margin-bottom:16px">You must log in to place an order and track its status.</p><button class="btn btn-primary btn-block" onclick="showAuth(\'login\')">👤 Login / Sign Up to Order</button></div>';
+    cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+discountLine+gstLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div><div class="checkout-section glass" style="padding:20px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius);margin-top:20px"><div style="font-size:1.5rem;margin-bottom:8px">🔒 Login Required</div><p style="font-size:.85rem;color:var(--text2);margin-bottom:16px">You must log in to place an order and track its status.</p><button class="btn btn-primary btn-block" onclick="showAuth(\'login\')">👤 Login / Sign Up to Order</button></div>';
     return;
+  }
+
+  // Available Offers Section
+  let offersHtml = '';
+  const activeOffers = (S.offers || []).filter(o => o.isActive);
+  if (activeOffers.length > 0) {
+    offersHtml = `
+      <div class="offers-section">
+        <h4 style="margin-bottom:12px; display:flex; align-items:center; gap:6px;">🏷️ Available Offers</h4>
+        <div class="offers-list">
+          ${activeOffers.map(o => {
+            const isApplicable = subtotal >= o.minOrderValue;
+            const isApplied = S.appliedOffer && S.appliedOffer.id === o.id;
+            let btnHtml = '';
+            if (isApplied) {
+              btnHtml = `<button class="btn btn-secondary btn-sm" style="color:var(--error); border-color:var(--error); margin-bottom:0; padding:4px 10px;" onclick="removeOffer()">Remove</button>`;
+            } else if (isApplicable) {
+              btnHtml = `<button class="btn btn-primary btn-sm" style="margin-bottom:0; padding:4px 10px;" onclick="applyOffer('${o.id}')">Apply</button>`;
+            } else {
+              btnHtml = `<button class="btn btn-secondary btn-sm" disabled style="margin-bottom:0; padding:4px 10px; opacity:0.5;">Apply</button>`;
+            }
+            
+            const reqMore = o.minOrderValue - subtotal;
+            const hintHtml = !isApplicable ? `<div class="offer-hint">Add ₹${reqMore.toFixed(0)} more to unlock this offer</div>` : '';
+            
+            let valueLabel = '';
+            if (o.type === 'discount_percent') valueLabel = `${o.value}% Off`;
+            else if (o.type === 'discount_flat') valueLabel = `₹${o.value} Off`;
+            else if (o.type === 'free_dish') valueLabel = `Free Any Dish`;
+            
+            return `
+              <div class="offer-card ${isApplied ? 'applied' : ''} ${isApplicable ? '' : 'disabled'}">
+                <div class="offer-info">
+                  <div class="offer-badge-row">
+                    <span class="offer-code-badge">${o.code}</span>
+                    <strong class="offer-type-tag">${valueLabel}</strong>
+                  </div>
+                  <div class="offer-desc">${o.description}</div>
+                  ${hintHtml}
+                </div>
+                <div>
+                  ${btnHtml}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
   }
 
   const notesValue = S.revisingOrderId ? S.revisingNotes : '';
@@ -704,7 +790,7 @@ function renderCart(){
     '</div>';
   }
 
-  cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+gstLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div><div class="checkout-section">'+tableFieldHtml+'<div class="input-group"><label>Special Instructions (optional)</label><textarea id="checkout-notes" placeholder="e.g. Extra spicy, no onions...">'+notesValue+'</textarea></div>'+submitBtn+'</div>'
+  cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+discountLine+gstLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div>' + offersHtml + '<div class="checkout-section">'+tableFieldHtml+'<div class="input-group"><label>Special Instructions (optional)</label><textarea id="checkout-notes" placeholder="e.g. Extra spicy, no onions...">'+notesValue+'</textarea></div>'+submitBtn+'</div>';
 }
 
 async function loadCartAddOns(){
@@ -855,12 +941,22 @@ async function submitOrder(){
   }
   
   showLoader('Placing order...');
-  const data={tableNumber:table,customerName:S.user.name,customerPhone:S.user.phone,items:S.cart.map(c=>({id:c.id,name:c.name + (c.portion ? ' (' + c.portion + ')' : ''),qty:c.qty,price:c.price})),specialInstructions:$('checkout-notes')?$('checkout-notes').value:''};
+  const data={
+    tableNumber:table,
+    customerName:S.user.name,
+    customerPhone:S.user.phone,
+    items:S.cart.map(c=>({id:c.id,name:c.name + (c.portion ? ' (' + c.portion + ')' : ''),qty:c.qty,price:c.price})),
+    specialInstructions:$('checkout-notes')?$('checkout-notes').value:'',
+    appliedOfferCode: S.appliedOffer ? S.appliedOffer.code : '',
+    discountAmount: S.discountAmount || 0
+  };
   try{
     const r=await callServer('placeOrder',data);hideLoader();
     if(r.success){
       S.currentOrder=r.data;
       S.cart=[];
+      S.appliedOffer=null;
+      S.discountAmount=0;
       updateCartBadge();
       
       // Check payment timing mode
@@ -913,7 +1009,10 @@ function updateTrackingUI(data){
   });
   let html='<h3>Order Details</h3>';
   (data.items||[]).forEach(it=>{html+='<div class="tracking-item"><span>'+it.name+' × '+it.qty+'</span><span>₹'+(it.price*it.qty)+'</span></div>'});
-  html+='<div class="tracking-total"><span>Total</span><span>₹'+data.total+'</span></div>';
+  if (data.discountAmount > 0) {
+    html += '<div class="tracking-item" style="color:var(--success); border-top: 1px dashed var(--border); padding-top: 8px;"><span>🏷️ Discount (' + (data.appliedOffer || 'Coupon') + ')</span><span>-₹' + data.discountAmount.toFixed(2) + '</span></div>';
+  }
+  html+='<div class="tracking-total"><span>Total</span><span>₹'+data.total.toFixed(2)+'</span></div>';
   if(data.specialInstructions)html+='<div style="margin-top:8px;font-size:.8rem;color:var(--secondary)">📝 '+data.specialInstructions+'</div>';
   $('track-items-section').innerHTML=html;
 
@@ -1151,7 +1250,9 @@ async function submitOrderRevision() {
       price: c.price,
       isAddOn: c.isAddOn || false
     })),
-    specialInstructions: $('checkout-notes') ? $('checkout-notes').value : ''
+    specialInstructions: $('checkout-notes') ? $('checkout-notes').value : '',
+    appliedOfferCode: S.appliedOffer ? S.appliedOffer.code : '',
+    discountAmount: S.discountAmount || 0
   };
 
   try {
@@ -1162,6 +1263,8 @@ async function submitOrderRevision() {
       S.revisingOrderId = null;
       S.revisingNotes = '';
       S.cart = [];
+      S.appliedOffer = null;
+      S.discountAmount = 0;
       updateCartBadge();
       showToast('Order updated successfully! 🎉', 'success');
       navigateTo('tracking');
@@ -1830,7 +1933,7 @@ function switchAdminTab(btn,tabId){
   document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));
   if(btn) btn.classList.add('active');
   
-  const tabs = ['admin-dashboard-tab','admin-orders-tab','admin-menu-tab','admin-addons-tab','admin-combos-tab','admin-reports-tab','admin-qr-tab','admin-settings-tab'];
+  const tabs = ['admin-dashboard-tab','admin-orders-tab','admin-menu-tab','admin-addons-tab','admin-combos-tab','admin-offers-tab','admin-reports-tab','admin-qr-tab','admin-settings-tab'];
   tabs.forEach(id=>{
     const el=$(id);
     if(el) el.classList.toggle('hidden',id!==tabId);
@@ -1843,6 +1946,7 @@ function switchAdminTab(btn,tabId){
     'admin-menu-tab': '📋 Menu Management',
     'admin-addons-tab': '🧩 Add-Ons Management',
     'admin-combos-tab': '🏷️ Combos Management',
+    'admin-offers-tab': '🎁 Offers Management',
     'admin-reports-tab': '📊 Financial Reports',
     'admin-qr-tab': '📱 QR Code Generator',
     'admin-settings-tab': '⚙️ Settings'
@@ -1863,6 +1967,7 @@ function switchAdminTab(btn,tabId){
   if($('admin-menu-search')) $('admin-menu-search').value = '';
   if($('admin-addons-search')) $('admin-addons-search').value = '';
   if($('admin-combos-search')) $('admin-combos-search').value = '';
+  if($('admin-offers-search')) $('admin-offers-search').value = '';
 
   // Show PWA install button in admin panel if supported
   const adminInstallBtn = $('admin-sidebar-install');
@@ -1875,6 +1980,7 @@ function switchAdminTab(btn,tabId){
   if(tabId==='admin-menu-tab')loadAdminMenu();
   if(tabId==='admin-addons-tab')loadAdminAddOns();
   if(tabId==='admin-combos-tab')loadAdminCombos();
+  if(tabId==='admin-offers-tab')loadAdminOffers();
   if(tabId==='admin-reports-tab')initReportsTab();
   if(tabId==='admin-qr-tab')initQRTab();
   if(tabId==='admin-settings-tab')loadAdminSettings();
@@ -4111,6 +4217,7 @@ function applyBootstrapData(d) {
   
   if (d.combos) S.combos = d.combos;
   if (d.addOns) S.adminAddons = d.addOns;
+  if (d.offers) S.offers = d.offers;
   
   if (d.menu) {
     S.menu = d.menu.items || {};
@@ -4985,3 +5092,348 @@ setTimeout(() => {
     showPwaInstallBanner();
   }
 }, 5000);
+
+// ===== CLIENT-SIDE OFFERS / COUPON SYSTEM =====
+
+function applyOffer(offerId) {
+  const offer = (S.offers || []).find(o => o.id === offerId);
+  if (offer) {
+    const subtotal = S.cart.reduce((s,c)=>s+c.price*c.qty,0);
+    if (subtotal >= offer.minOrderValue) {
+      S.appliedOffer = offer;
+      renderCart();
+      showToast(`Offer ${offer.code} applied successfully! 🎉`, 'success');
+    } else {
+      showToast(`Minimum order value of ₹${offer.minOrderValue} not met.`, 'error');
+    }
+  }
+}
+
+function removeOffer() {
+  if (S.appliedOffer) {
+    const code = S.appliedOffer.code;
+    S.appliedOffer = null;
+    S.discountAmount = 0;
+    renderCart();
+    showToast(`Offer ${code} removed.`, 'info');
+  }
+}
+
+// ===== ADMINISTRATIVE OFFERS MANAGEMENT =====
+
+async function loadAdminOffers() {
+  const searchInput = $('admin-offers-search');
+  if (searchInput && document.activeElement === searchInput) return;
+  
+  try {
+    const r = await callServer('getAllOffers');
+    if (r.success) {
+      S.offers = r.data;
+      renderAdminOffers();
+    }
+  } catch(e) {
+    showToast('Failed to load offers', 'error');
+  }
+}
+
+function renderAdminOffers() {
+  const listEl = $('admin-offers-list');
+  if (!listEl) return;
+  
+  const query = $('admin-offers-search') ? $('admin-offers-search').value.toLowerCase().trim() : '';
+  const offers = S.offers || [];
+  
+  let filtered = offers;
+  if (query) {
+    filtered = offers.filter(o => 
+      o.code.toLowerCase().includes(query) ||
+      o.description.toLowerCase().includes(query)
+    );
+  }
+  
+  if (!filtered.length) {
+    listEl.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;"><div class="empty-icon">🔍</div><p>No offers configured</p></div>';
+    return;
+  }
+  
+  listEl.innerHTML = filtered.map(o => {
+    let typeLabel = '';
+    if (o.type === 'discount_percent') typeLabel = '🏷️ % Discount';
+    else if (o.type === 'discount_flat') typeLabel = '💵 Flat Discount';
+    else if (o.type === 'free_dish') typeLabel = '🎁 Free Dish';
+    
+    let valLabel = '';
+    if (o.type === 'discount_percent') valLabel = `${o.value}%`;
+    else if (o.type === 'discount_flat') valLabel = `₹${o.value}`;
+    else if (o.type === 'free_dish') valLabel = 'Free Any';
+    
+    const statusText = o.isActive ? 'Active' : 'Inactive';
+    const statusClass = o.isActive ? 'status-ready' : 'status-received';
+    
+    return `
+      <div class="admin-offer-card glass">
+        <div class="admin-offer-header">
+          <div class="admin-offer-title">
+            <span class="offer-code-badge">${o.code}</span>
+            <span style="font-size:0.75rem; font-weight:700; color:var(--text3); margin-top:2px;">${typeLabel}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px">
+            <span class="status-badge ${statusClass}" style="font-size:0.65rem">${statusText}</span>
+            <label class="toggle-switch">
+              <input type="checkbox" ${o.isActive ? 'checked' : ''} onchange="toggleOfferAvail('${o.id}')">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+        
+        <div class="offer-desc" style="font-size:0.85rem; color:var(--text1)">
+          ${o.description}
+        </div>
+        
+        <div class="admin-offer-meta-row">
+          <div>Min Order: <span class="admin-offer-meta-val">₹${o.minOrderValue}</span></div>
+          <div>Value: <span class="admin-offer-meta-val">${valLabel}</span></div>
+        </div>
+        
+        <div class="admin-offer-actions">
+          <button class="btn btn-secondary btn-block btn-sm" onclick="showEditOfferModal('${o.id}')" style="margin-bottom:0; padding:6px;">✏️ Edit</button>
+          <button class="btn btn-secondary btn-block btn-sm" style="color:var(--error); border-color:rgba(239,68,68,0.2); margin-bottom:0; padding:6px;" onclick="deleteAdminOffer('${o.id}', '${o.code}')">🗑️ Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function showAddOfferModal() {
+  const html = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px">
+      <h3 style="font-family:var(--font-head);font-weight:800;font-size:1.2rem">🎁 Add New Offer</h3>
+      <span style="font-size:1.5rem;cursor:pointer" onclick="closeCustomModal()">✕</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="input-group">
+        <label>Offer Code (Alphanumeric, e.g. WELCOME50)</label>
+        <input type="text" id="offer-form-code" placeholder="WELCOME50" style="text-transform:uppercase">
+      </div>
+      
+      <div class="form-row-2">
+        <div class="input-group">
+          <label>Offer Type</label>
+          <select id="offer-form-type" onchange="handleOfferTypeChange()">
+            <option value="discount_percent">Percentage Discount</option>
+            <option value="discount_flat">Flat Amount Discount</option>
+            <option value="free_dish">Free Any Dish</option>
+          </select>
+        </div>
+        <div class="input-group" id="offer-value-group">
+          <label id="offer-value-label">Discount Percentage (%)</label>
+          <input type="number" id="offer-form-value" placeholder="10" min="0">
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label>Minimum Order Value (₹)</label>
+        <input type="number" id="offer-form-min-order" placeholder="200" min="0">
+      </div>
+
+      <div class="input-group">
+        <label>Description</label>
+        <input type="text" id="offer-form-description" placeholder="Get 10% off on orders above ₹200">
+      </div>
+
+      <div style="display:flex;gap:12px;margin-top:12px">
+        <button class="btn btn-primary btn-block" onclick="saveOffer()" style="margin-bottom:0">💾 Create Offer</button>
+        <button class="btn btn-secondary btn-block" onclick="closeCustomModal()" style="margin-bottom:0">Cancel</button>
+      </div>
+    </div>
+  `;
+  
+  $('modal-content').innerHTML = html;
+  $('modal-overlay').classList.add('active');
+  setTimeout(attachAutoSuggestListeners, 50);
+}
+
+function showEditOfferModal(offerId) {
+  const offer = (S.offers || []).find(o => o.id === offerId);
+  if (!offer) return;
+  
+  const html = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px">
+      <h3 style="font-family:var(--font-head);font-weight:800;font-size:1.2rem">🎁 Edit Offer</h3>
+      <span style="font-size:1.5rem;cursor:pointer" onclick="closeCustomModal()">✕</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <input type="hidden" id="offer-form-id" value="${offer.id}">
+      <div class="input-group">
+        <label>Offer Code (Alphanumeric)</label>
+        <input type="text" id="offer-form-code" value="${offer.code}" placeholder="WELCOME50" style="text-transform:uppercase">
+      </div>
+      
+      <div class="form-row-2">
+        <div class="input-group">
+          <label>Offer Type</label>
+          <select id="offer-form-type" onchange="handleOfferTypeChange()">
+            <option value="discount_percent" ${offer.type === 'discount_percent' ? 'selected' : ''}>Percentage Discount</option>
+            <option value="discount_flat" ${offer.type === 'discount_flat' ? 'selected' : ''}>Flat Amount Discount</option>
+            <option value="free_dish" ${offer.type === 'free_dish' ? 'selected' : ''}>Free Any Dish</option>
+          </select>
+        </div>
+        <div class="input-group" id="offer-value-group" style="display: ${offer.type === 'free_dish' ? 'none' : 'block'}">
+          <label id="offer-value-label">${offer.type === 'discount_percent' ? 'Discount Percentage (%)' : 'Discount Amount (₹)'}</label>
+          <input type="number" id="offer-form-value" value="${offer.value}" placeholder="10" min="0">
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label>Minimum Order Value (₹)</label>
+        <input type="number" id="offer-form-min-order" value="${offer.minOrderValue}" placeholder="200" min="0">
+      </div>
+
+      <div class="input-group">
+        <label>Description</label>
+        <input type="text" id="offer-form-description" value="${offer.description}" placeholder="Get 10% off on orders above ₹200">
+      </div>
+
+      <div class="gst-toggle-row" style="margin-bottom:0">
+        <span>Offer Active</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="offer-form-active" ${offer.isActive ? 'checked' : ''}>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-top:12px">
+        <button class="btn btn-primary btn-block" onclick="saveOffer()" style="margin-bottom:0">💾 Save Changes</button>
+        <button class="btn btn-secondary btn-block" onclick="closeCustomModal()" style="margin-bottom:0">Cancel</button>
+      </div>
+    </div>
+  `;
+  
+  $('modal-content').innerHTML = html;
+  $('modal-overlay').classList.add('active');
+  setTimeout(attachAutoSuggestListeners, 50);
+}
+
+function handleOfferTypeChange() {
+  const type = $('offer-form-type').value;
+  const valueGroup = $('offer-value-group');
+  const valueLabel = $('offer-value-label');
+  const valueInput = $('offer-form-value');
+  
+  if (type === 'free_dish') {
+    valueGroup.style.display = 'none';
+    valueInput.value = '0';
+  } else {
+    valueGroup.style.display = 'block';
+    if (type === 'discount_percent') {
+      valueLabel.textContent = 'Discount Percentage (%)';
+      valueInput.placeholder = '10';
+    } else {
+      valueLabel.textContent = 'Discount Amount (₹)';
+      valueInput.placeholder = '50';
+    }
+  }
+  autoSuggestDescription();
+}
+
+function autoSuggestDescription() {
+  const type = $('offer-form-type').value;
+  const val = $('offer-form-value').value || '0';
+  const minVal = $('offer-form-min-order').value || '0';
+  const descInput = $('offer-form-description');
+  
+  let suggested = '';
+  if (type === 'discount_percent') {
+    suggested = `Get ${val}% off on orders above ₹${minVal}`;
+  } else if (type === 'discount_flat') {
+    suggested = `Get flat ₹${val} off on orders above ₹${minVal}`;
+  } else if (type === 'free_dish') {
+    suggested = `Get any 1 dish free on orders above ₹${minVal}`;
+  }
+  descInput.value = suggested;
+}
+
+function attachAutoSuggestListeners() {
+  const value = $('offer-form-value');
+  const min = $('offer-form-min-order');
+  
+  if (value) value.addEventListener('input', autoSuggestDescription);
+  if (min) min.addEventListener('input', autoSuggestDescription);
+}
+
+async function saveOffer() {
+  const idEl = $('offer-form-id');
+  const code = $('offer-form-code').value.toUpperCase().trim();
+  const type = $('offer-form-type').value;
+  const value = parseFloat($('offer-form-value').value) || 0;
+  const minVal = parseFloat($('offer-form-min-order').value) || 0;
+  const description = $('offer-form-description').value.trim();
+  const activeEl = $('offer-form-active');
+  const isActive = activeEl ? activeEl.checked : true;
+  
+  if (!code) return showToast('Please enter an offer code', 'error');
+  if (!description) return showToast('Please enter a description', 'error');
+  
+  showLoader('Saving offer...');
+  const isEdit = !!idEl;
+  const action = isEdit ? 'updateOffer' : 'addOffer';
+  const data = {
+    code,
+    type,
+    value,
+    minOrderValue: minVal,
+    description,
+    isActive
+  };
+  if (isEdit) data.id = idEl.value;
+  
+  try {
+    const r = await callServer(action, data);
+    hideLoader();
+    if (r.success) {
+      showToast(r.message, 'success');
+      closeCustomModal();
+      loadAdminOffers();
+    } else {
+      showToast(r.message, 'error');
+    }
+  } catch(e) {
+    hideLoader();
+    showToast('Failed to save offer', 'error');
+  }
+}
+
+async function deleteAdminOffer(offerId, code) {
+  if (confirm(`Are you sure you want to delete offer ${code}?`)) {
+    showLoader('Deleting offer...');
+    try {
+      const r = await callServer('deleteOffer', offerId);
+      hideLoader();
+      if (r.success) {
+        showToast(r.message, 'success');
+        loadAdminOffers();
+      } else {
+        showToast(r.message, 'error');
+      }
+    } catch(e) {
+      hideLoader();
+      showToast('Failed to delete offer', 'error');
+    }
+  }
+}
+
+async function toggleOfferAvail(offerId) {
+  try {
+    const r = await callServer('toggleOfferAvailability', offerId);
+    if (r.success) {
+      showToast(r.message, 'success');
+      loadAdminOffers();
+    } else {
+      showToast(r.message, 'error');
+      loadAdminOffers();
+    }
+  } catch(e) {
+    showToast('Failed to toggle offer state', 'error');
+    loadAdminOffers();
+  }
+}

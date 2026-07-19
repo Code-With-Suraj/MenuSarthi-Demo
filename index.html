@@ -307,6 +307,9 @@
       <button class="admin-tab" data-tab="admin-combos-tab" onclick="switchAdminTab(this,'admin-combos-tab')">
         <span class="nav-icon">🏷️</span><span class="nav-text">Combos</span>
       </button>
+      <button class="admin-tab" data-tab="admin-offers-tab" onclick="switchAdminTab(this,'admin-offers-tab')">
+        <span class="nav-icon">🎁</span><span class="nav-text">Offers</span>
+      </button>
       <button class="admin-tab" data-tab="admin-reports-tab" onclick="switchAdminTab(this,'admin-reports-tab')">
         <span class="nav-icon">📊</span><span class="nav-text">Reports</span>
       </button>
@@ -520,6 +523,18 @@
       </div>
     </div>
     <div id="admin-combos-list"></div>
+  </div>
+
+  <!-- Offers Tab -->
+  <div id="admin-offers-tab" class="hidden">
+    <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="showAddOfferModal()" style="margin-bottom:0">+ Add Offer</button>
+      <div class="search-box" style="flex:1;margin-bottom:0;min-width:200px">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="admin-offers-search" placeholder="Search offers by code..." oninput="renderAdminOffers()" autocorrect="off" autocapitalize="none" spellcheck="false">
+      </div>
+    </div>
+    <div id="admin-offers-list" class="admin-offers-grid"></div>
   </div>
 
   <!-- Reports Tab -->
