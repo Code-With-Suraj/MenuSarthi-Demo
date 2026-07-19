@@ -688,14 +688,21 @@ function renderCart(){
       } else if (S.appliedOffer.type === 'discount_flat') {
         discountAmt = Math.min(subtotal, S.appliedOffer.value);
       } else if (S.appliedOffer.type === 'free_dish') {
-        let minPrice = Infinity;
-        S.cart.forEach(c => {
-          if (c.price > 0 && c.price < minPrice) {
-            minPrice = c.price;
+        if (S.appliedOffer.freeDishId && S.appliedOffer.freeDishId !== 'any') {
+          const freeCartItem = S.cart.find(c => c.id.split('__')[0] === S.appliedOffer.freeDishId);
+          if (freeCartItem) {
+            discountAmt = freeCartItem.price;
           }
-        });
-        if (minPrice !== Infinity) {
-          discountAmt = minPrice;
+        } else {
+          let minPrice = Infinity;
+          S.cart.forEach(c => {
+            if (c.price > 0 && c.price < minPrice) {
+              minPrice = c.price;
+            }
+          });
+          if (minPrice !== Infinity) {
+            discountAmt = minPrice;
+          }
         }
       }
       S.discountAmount = discountAmt;
@@ -5101,6 +5108,39 @@ function applyOffer(offerId) {
     const subtotal = S.cart.reduce((s,c)=>s+c.price*c.qty,0);
     if (subtotal >= offer.minOrderValue) {
       S.appliedOffer = offer;
+      
+      // Auto-add free dish if it is a specific free dish offer and not already in cart
+      if (offer.type === 'free_dish' && offer.freeDishId && offer.freeDishId !== 'any') {
+        const dishId = offer.freeDishId;
+        const isInCart = S.cart.some(c => c.id.split('__')[0] === dishId);
+        if (!isInCart) {
+          const item = findMenuItem(dishId);
+          if (item) {
+            let cartId = item.id;
+            let portion = '';
+            let price = item.price;
+            if (item.portions && item.portions.length > 0) {
+              portion = item.portions[0];
+              price = item.portionPrices[0];
+              cartId = item.id + '__' + portion;
+            }
+            S.cart.push({
+              id: cartId,
+              name: item.name,
+              price: price,
+              qty: 1,
+              type: item.type || 'Veg',
+              portion: portion,
+              baseId: portion ? item.id : undefined
+            });
+            updateCartBadge();
+            showToast(`${item.name} added to your cart for free! 🎁`, 'success');
+          } else {
+            showToast(`Offer applied, but please add the free dish to your cart!`, 'info');
+          }
+        }
+      }
+      
       renderCart();
       showToast(`Offer ${offer.code} applied successfully! 🎉`, 'success');
     } else {
@@ -5165,7 +5205,19 @@ function renderAdminOffers() {
     let valLabel = '';
     if (o.type === 'discount_percent') valLabel = `${o.value}%`;
     else if (o.type === 'discount_flat') valLabel = `₹${o.value}`;
-    else if (o.type === 'free_dish') valLabel = 'Free Any';
+    else if (o.type === 'free_dish') {
+      if (o.freeDishId && o.freeDishId !== 'any') {
+        let allItems = [];
+        if (S.adminMenu && S.adminMenu.length) allItems = S.adminMenu;
+        else {
+          for (const cat in S.menu) allItems = allItems.concat(S.menu[cat] || []);
+        }
+        const item = allItems.find(m => m.id === o.freeDishId);
+        valLabel = item ? `Free ${item.name}` : 'Free Specific Dish';
+      } else {
+        valLabel = 'Free Any';
+      }
+    }
     
     const statusText = o.isActive ? 'Active' : 'Inactive';
     const statusClass = o.isActive ? 'status-ready' : 'status-received';
@@ -5222,13 +5274,21 @@ function showAddOfferModal() {
           <select id="offer-form-type" onchange="handleOfferTypeChange()">
             <option value="discount_percent">Percentage Discount</option>
             <option value="discount_flat">Flat Amount Discount</option>
-            <option value="free_dish">Free Any Dish</option>
+            <option value="free_dish">Free Dish Offer</option>
           </select>
         </div>
         <div class="input-group" id="offer-value-group">
           <label id="offer-value-label">Discount Percentage (%)</label>
           <input type="number" id="offer-form-value" placeholder="10" min="0">
         </div>
+      </div>
+
+      <!-- Specific Free Dish Container -->
+      <div class="input-group" id="offer-free-dish-group" style="display:none">
+        <label>Select Free Item</label>
+        <input type="text" id="offer-form-dish-search" placeholder="🔍 Search menu items..." oninput="filterFreeDishList()" style="margin-bottom:8px">
+        <div id="offer-form-dish-list" style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 8px; display:flex; flex-direction:column; gap:6px; background: rgba(0,0,0,0.15);"></div>
+        <input type="hidden" id="offer-form-free-dish" value="any">
       </div>
 
       <div class="input-group">
@@ -5275,13 +5335,21 @@ function showEditOfferModal(offerId) {
           <select id="offer-form-type" onchange="handleOfferTypeChange()">
             <option value="discount_percent" ${offer.type === 'discount_percent' ? 'selected' : ''}>Percentage Discount</option>
             <option value="discount_flat" ${offer.type === 'discount_flat' ? 'selected' : ''}>Flat Amount Discount</option>
-            <option value="free_dish" ${offer.type === 'free_dish' ? 'selected' : ''}>Free Any Dish</option>
+            <option value="free_dish" ${offer.type === 'free_dish' ? 'selected' : ''}>Free Dish Offer</option>
           </select>
         </div>
         <div class="input-group" id="offer-value-group" style="display: ${offer.type === 'free_dish' ? 'none' : 'block'}">
           <label id="offer-value-label">${offer.type === 'discount_percent' ? 'Discount Percentage (%)' : 'Discount Amount (₹)'}</label>
           <input type="number" id="offer-form-value" value="${offer.value}" placeholder="10" min="0">
         </div>
+      </div>
+
+      <!-- Specific Free Dish Container -->
+      <div class="input-group" id="offer-free-dish-group" style="display:${offer.type === 'free_dish' ? 'block' : 'none'}">
+        <label>Select Free Item</label>
+        <input type="text" id="offer-form-dish-search" placeholder="🔍 Search menu items..." oninput="filterFreeDishList()" style="margin-bottom:8px">
+        <div id="offer-form-dish-list" style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 8px; display:flex; flex-direction:column; gap:6px; background: rgba(0,0,0,0.15);"></div>
+        <input type="hidden" id="offer-form-free-dish" value="${offer.freeDishId || 'any'}">
       </div>
 
       <div class="input-group">
@@ -5311,6 +5379,9 @@ function showEditOfferModal(offerId) {
   
   $('modal-content').innerHTML = html;
   $('modal-overlay').classList.add('active');
+  if (offer.type === 'free_dish') {
+    populateFreeDishList(offer.freeDishId || 'any');
+  }
   setTimeout(attachAutoSuggestListeners, 50);
 }
 
@@ -5319,12 +5390,16 @@ function handleOfferTypeChange() {
   const valueGroup = $('offer-value-group');
   const valueLabel = $('offer-value-label');
   const valueInput = $('offer-form-value');
+  const freeDishGroup = $('offer-free-dish-group');
   
   if (type === 'free_dish') {
     valueGroup.style.display = 'none';
     valueInput.value = '0';
+    freeDishGroup.style.display = 'block';
+    populateFreeDishList($('offer-form-free-dish').value);
   } else {
     valueGroup.style.display = 'block';
+    freeDishGroup.style.display = 'none';
     if (type === 'discount_percent') {
       valueLabel.textContent = 'Discount Percentage (%)';
       valueInput.placeholder = '10';
@@ -5348,7 +5423,20 @@ function autoSuggestDescription() {
   } else if (type === 'discount_flat') {
     suggested = `Get flat ₹${val} off on orders above ₹${minVal}`;
   } else if (type === 'free_dish') {
-    suggested = `Get any 1 dish free on orders above ₹${minVal}`;
+    const dishId = $('offer-form-free-dish').value;
+    if (!dishId || dishId === 'any') {
+      suggested = `Get any 1 dish free on orders above ₹${minVal}`;
+    } else {
+      let itemName = 'Item';
+      let allItems = [];
+      if (S.adminMenu && S.adminMenu.length) allItems = S.adminMenu;
+      else {
+        for (const cat in S.menu) allItems = allItems.concat(S.menu[cat] || []);
+      }
+      const item = allItems.find(m => m.id === dishId);
+      if (item) itemName = item.name;
+      suggested = `Get free ${itemName} on orders above ₹${minVal}`;
+    }
   }
   descInput.value = suggested;
 }
@@ -5361,6 +5449,87 @@ function attachAutoSuggestListeners() {
   if (min) min.addEventListener('input', autoSuggestDescription);
 }
 
+function populateFreeDishList(selectedId) {
+  const container = $('offer-form-dish-list');
+  if (!container) return;
+  
+  let allItems = [];
+  if (S.adminMenu && S.adminMenu.length) {
+    allItems = S.adminMenu;
+  } else {
+    for (const cat in S.menu) {
+      allItems = allItems.concat(S.menu[cat] || []);
+    }
+  }
+  
+  const seen = {};
+  allItems = allItems.filter(item => {
+    if (seen[item.id]) return false;
+    seen[item.id] = true;
+    return true;
+  });
+
+  const selectedValue = selectedId || 'any';
+
+  let html = `
+    <label style="display:flex; align-items:center; gap:10px; padding:8px; border-radius:var(--radius-xs); cursor:pointer; border:1px solid ${selectedValue === 'any' ? 'var(--primary)' : 'transparent'}; background:${selectedValue === 'any' ? 'rgba(255,94,20,0.05)' : 'transparent'};" class="free-dish-option-row" data-id="any">
+      <input type="radio" name="freeDishSelect" value="any" ${selectedValue === 'any' ? 'checked' : ''} onchange="setFreeDishValue('any')" style="accent-color:var(--primary);">
+      <div style="display:flex; flex-direction:column;">
+        <strong style="font-size:0.85rem; color:var(--text1);">Any Dish (Cheapest in Cart)</strong>
+        <span style="font-size:0.7rem; color:var(--text3);">Waive price of cheapest item in cart.</span>
+      </div>
+    </label>
+  `;
+
+  allItems.forEach(item => {
+    const isSelected = selectedValue === item.id;
+    const categoryName = item.category || 'Menu';
+    html += `
+      <label style="display:flex; align-items:center; gap:10px; padding:8px; border-radius:var(--radius-xs); cursor:pointer; border:1px solid ${isSelected ? 'var(--primary)' : 'transparent'}; background:${isSelected ? 'rgba(255,94,20,0.05)' : 'transparent'};" class="free-dish-option-row" data-id="${item.id}">
+        <input type="radio" name="freeDishSelect" value="${item.id}" ${isSelected ? 'checked' : ''} onchange="setFreeDishValue('${item.id}')" style="accent-color:var(--primary);">
+        <div style="display:flex; flex-direction:column;">
+          <strong style="font-size:0.85rem; color:var(--text1);">${item.name}</strong>
+          <span style="font-size:0.7rem; color:var(--text3);">Price: ₹${item.price} | Category: ${categoryName}</span>
+        </div>
+      </label>
+    `;
+  });
+
+  container.innerHTML = html;
+  $('offer-form-free-dish').value = selectedValue;
+}
+
+function setFreeDishValue(val) {
+  $('offer-form-free-dish').value = val;
+  document.querySelectorAll('.free-dish-option-row').forEach(row => {
+    const id = row.dataset.id;
+    const isSelected = id === val;
+    row.style.borderColor = isSelected ? 'var(--primary)' : 'transparent';
+    row.style.background = isSelected ? 'rgba(255,94,20,0.05)' : 'transparent';
+  });
+  autoSuggestDescription();
+}
+
+function filterFreeDishList() {
+  const query = $('offer-form-dish-search').value.toLowerCase().trim();
+  const rows = document.querySelectorAll('.free-dish-option-row');
+  
+  rows.forEach(row => {
+    const id = row.dataset.id;
+    if (id === 'any') {
+      row.style.display = query === '' ? 'flex' : 'none';
+      return;
+    }
+    
+    const text = row.textContent.toLowerCase();
+    if (text.includes(query)) {
+      row.style.display = 'flex';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+
 async function saveOffer() {
   const idEl = $('offer-form-id');
   const code = $('offer-form-code').value.toUpperCase().trim();
@@ -5370,6 +5539,7 @@ async function saveOffer() {
   const description = $('offer-form-description').value.trim();
   const activeEl = $('offer-form-active');
   const isActive = activeEl ? activeEl.checked : true;
+  const freeDishId = type === 'free_dish' ? $('offer-form-free-dish').value : '';
   
   if (!code) return showToast('Please enter an offer code', 'error');
   if (!description) return showToast('Please enter a description', 'error');
@@ -5381,6 +5551,7 @@ async function saveOffer() {
     code,
     type,
     value,
+    freeDishId,
     minOrderValue: minVal,
     description,
     isActive
