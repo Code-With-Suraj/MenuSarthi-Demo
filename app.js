@@ -2003,7 +2003,13 @@ async function handleAdminLogin(){
     if(r.success){
       S.isAdmin=true;
       saveAdminSession();
-      try { FirebaseSync.loginAdmin(); } catch(e) {}
+      showLoader('Authenticating real-time sync...');
+      try {
+        await FirebaseSync.loginAdmin();
+      } catch(e) {
+        console.error("Firebase admin login error:", e);
+      }
+      hideLoader();
       hide('admin-login-screen');
       show('admin-dashboard');
       // Check subscription status for admin
@@ -4490,10 +4496,15 @@ async function init(){
     verifyUserSessionFromServer(S.user.phone);
   }
   
-  // Restore admin session
-  if(loadAdminSession()){
+  // Restore admin session - await Firebase authentication before loading view
+  let adminSessionActive = loadAdminSession();
+  if(adminSessionActive){
     S.isAdmin=true;
-    try { FirebaseSync.loginAdmin(); } catch(e) {}
+    try {
+      await FirebaseSync.loginAdmin();
+    } catch(e) {
+      console.error("Firebase admin restore error:", e);
+    }
     hide('admin-login-screen');
     show('admin-dashboard');
   }
