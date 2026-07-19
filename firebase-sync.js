@@ -34,29 +34,53 @@ const FirebaseSync = {
   async loginAdmin() {
     await this.init();
     
-    const spreadsheetId = (CONFIG.SPREADSHEET_ID || "default").toLowerCase();
-    const email = `admin_${spreadsheetId}@menusarthi.com`;
-    const password = `auth_${spreadsheetId}`;
+    const spreadsheetIdLower = (CONFIG.SPREADSHEET_ID || "default").toLowerCase();
+    const spreadsheetIdPreserved = CONFIG.SPREADSHEET_ID || "default";
+    const email = `admin_${spreadsheetIdLower}@menusarthi.com`;
+    
+    // We will try multiple password variations in case it was created differently in past sessions
+    const passwordsToTry = [
+      `auth_${spreadsheetIdLower}`,
+      `auth_${spreadsheetIdPreserved}`,
+      spreadsheetIdPreserved,
+      spreadsheetIdLower,
+      "menusarthiadmin"
+    ];
 
-    try {
-      await firebase.auth().signInWithEmailAndPassword(email, password);
-      console.log("Admin authenticated in Firebase.");
-      return true;
-    } catch (e) {
-      // If user doesn't exist (invalid-credential or user-not-found), try to create it programmatically
-      if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
-        try {
-          console.log("Admin user not found in Firebase. Creating dynamically...");
-          await firebase.auth().createUserWithEmailAndPassword(email, password);
-          console.log("Admin user created and authenticated in Firebase.");
-          return true;
-        } catch (createErr) {
+    let lastError = null;
+    for (const password of passwordsToTry) {
+      try {
+        await firebase.auth().signInWithEmailAndPassword(email, password);
+        console.log("Admin authenticated in Firebase.");
+        return true;
+      } catch (e) {
+        lastError = e;
+        // If it's a password issue or user not found, we continue to try other passwords
+        if (e.code !== 'auth/invalid-credential' && e.code !== 'auth/user-not-found') {
+          break; // Stop if it's a network error or other blocking error
+        }
+      }
+    }
+
+    // If all login attempts failed, check if we should try creating the user
+    if (lastError && (lastError.code === 'auth/user-not-found' || lastError.code === 'auth/invalid-credential')) {
+      const defaultPassword = `auth_${spreadsheetIdLower}`;
+      try {
+        console.log("Admin user login failed. Attempting to create user programmatically...");
+        await firebase.auth().createUserWithEmailAndPassword(email, defaultPassword);
+        console.log("Admin user created and authenticated in Firebase.");
+        return true;
+      } catch (createErr) {
+        if (createErr.code === 'auth/email-already-in-use') {
+          console.warn(`Admin email ${email} is already in use, but passwords did not match. Please verify the password or reset it in the Firebase Console.`);
+        } else {
           console.error("Failed to create admin user programmatically:", createErr);
         }
       }
-      console.error("Admin Firebase authentication failed:", e);
-      return false;
     }
+
+    console.error("Admin Firebase authentication failed:", lastError);
+    return false;
   },
 
   async logoutAdmin() {
