@@ -51,7 +51,8 @@ const FirebaseSync = {
     for (const password of passwordsToTry) {
       try {
         await firebase.auth().signInWithEmailAndPassword(email, password);
-        console.log("Admin authenticated in Firebase.");
+        const currentUser = firebase.auth().currentUser;
+        console.log("Admin authenticated in Firebase. Email in token:", currentUser ? currentUser.email : "none");
         return true;
       } catch (e) {
         lastError = e;
@@ -68,7 +69,8 @@ const FirebaseSync = {
       try {
         console.log("Admin user login failed. Attempting to create user programmatically...");
         await firebase.auth().createUserWithEmailAndPassword(email, defaultPassword);
-        console.log("Admin user created and authenticated in Firebase.");
+        const currentUser = firebase.auth().currentUser;
+        console.log("Admin user created and authenticated in Firebase. Email in token:", currentUser ? currentUser.email : "none");
         return true;
       } catch (createErr) {
         if (createErr.code === 'auth/email-already-in-use') {
