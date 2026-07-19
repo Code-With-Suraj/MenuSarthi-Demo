@@ -266,36 +266,208 @@
 </div>
 
 <!-- Admin Dashboard (shown after login) -->
-<div id="admin-dashboard" class="hidden">
-  <div class="admin-header">
-    <h2>📊 Dashboard</h2>
-    <button class="btn btn-ghost btn-sm" onclick="handleAdminLogout()">Logout ↗</button>
+<div id="admin-dashboard" class="hidden admin-sidebar-layout">
+  <!-- Mobile Sidebar Toggle Topbar -->
+  <div class="admin-mobile-topbar">
+    <button class="sidebar-toggle-btn" onclick="toggleAdminSidebar()">☰</button>
+    <h2 id="admin-current-tab-title">📊 Dashboard</h2>
+    <button class="btn btn-ghost btn-sm" onclick="handleAdminLogout()" style="padding:4px 8px;margin-bottom:0">Logout</button>
   </div>
 
-  <!-- Subscription Status Banner (populated by JS) -->
-  <div id="subscription-banner-container"></div>
+  <!-- Sidebar -->
+  <aside class="admin-sidebar" id="admin-sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-logo">🍽️</span>
+      <div class="brand-info">
+        <h3 id="admin-sidebar-restaurant-name">MenuSarthi</h3>
+        <span class="brand-subtitle">Staff Panel</span>
+      </div>
+      <button class="sidebar-close-btn" onclick="toggleAdminSidebar()">✕</button>
+    </div>
+    
+    <nav class="sidebar-nav">
+      <button class="admin-tab active" data-tab="admin-dashboard-tab" onclick="switchAdminTab(this,'admin-dashboard-tab')">
+        <span class="nav-icon">📊</span><span class="nav-text">Dashboard</span>
+      </button>
+      <button class="admin-tab" data-tab="admin-orders-tab" onclick="switchAdminTab(this,'admin-orders-tab')">
+        <span class="nav-icon">🔔</span><span class="nav-text">Orders</span>
+      </button>
+      <button class="admin-tab" data-tab="admin-menu-tab" onclick="switchAdminTab(this,'admin-menu-tab')">
+        <span class="nav-icon">📋</span><span class="nav-text">Menu</span>
+      </button>
+      <button class="admin-tab" data-tab="admin-addons-tab" onclick="switchAdminTab(this,'admin-addons-tab')">
+        <span class="nav-icon">🧩</span><span class="nav-text">Add-Ons</span>
+      </button>
+      <button class="admin-tab" data-tab="admin-combos-tab" onclick="switchAdminTab(this,'admin-combos-tab')">
+        <span class="nav-icon">🏷️</span><span class="nav-text">Combos</span>
+      </button>
+      <button class="admin-tab" data-tab="admin-reports-tab" onclick="switchAdminTab(this,'admin-reports-tab')">
+        <span class="nav-icon">📊</span><span class="nav-text">Reports</span>
+      </button>
+      <button class="admin-tab" data-tab="admin-qr-tab" onclick="switchAdminTab(this,'admin-qr-tab')">
+        <span class="nav-icon">📱</span><span class="nav-text">QR Generator</span>
+      </button>
+      <button class="admin-tab" data-tab="admin-settings-tab" onclick="switchAdminTab(this,'admin-settings-tab')">
+        <span class="nav-icon">⚙️</span><span class="nav-text">Settings</span>
+      </button>
+    </nav>
+    
+    <div class="sidebar-footer">
+      <button class="btn btn-danger-glow btn-block btn-sm" onclick="handleAdminLogout()">
+        🚪 Logout
+      </button>
+    </div>
+  </aside>
 
-  <!-- Stats -->
-  <div class="stat-cards" id="admin-stats">
-    <div class="stat-card"><div class="stat-val" id="stat-total">0</div><div class="stat-label">Today's Orders</div></div>
-    <div class="stat-card"><div class="stat-val" id="stat-revenue">₹0</div><div class="stat-label">Revenue</div></div>
-    <div class="stat-card"><div class="stat-val" id="stat-active">0</div><div class="stat-label">Active Orders</div></div>
-    <div class="stat-card"><div class="stat-val" id="stat-avg">₹0</div><div class="stat-label">Avg Order</div></div>
-  </div>
+  <!-- Sidebar Overlay for Mobile -->
+  <div class="admin-sidebar-overlay" id="admin-sidebar-overlay" onclick="toggleAdminSidebar()"></div>
 
-  <!-- Tabs -->
-  <div class="admin-tabs">
-    <button class="admin-tab active" data-tab="admin-orders-tab" onclick="switchAdminTab(this,'admin-orders-tab')">🔔 Orders</button>
-    <button class="admin-tab" data-tab="admin-menu-tab" onclick="switchAdminTab(this,'admin-menu-tab')">📋 Menu</button>
-    <button class="admin-tab" data-tab="admin-addons-tab" onclick="switchAdminTab(this,'admin-addons-tab')">🧩 Add-Ons</button>
-    <button class="admin-tab" data-tab="admin-combos-tab" onclick="switchAdminTab(this,'admin-combos-tab')">🏷️ Combos</button>
-    <button class="admin-tab" data-tab="admin-reports-tab" onclick="switchAdminTab(this,'admin-reports-tab')">📊 Reports</button>
-    <button class="admin-tab" data-tab="admin-qr-tab" onclick="switchAdminTab(this,'admin-qr-tab')">📱 QR</button>
-    <button class="admin-tab" data-tab="admin-settings-tab" onclick="switchAdminTab(this,'admin-settings-tab')">⚙️ Settings</button>
-  </div>
+  <!-- Main Content Area -->
+  <main class="admin-main-content">
+    <!-- Desktop Header -->
+    <header class="admin-desktop-header">
+      <div>
+        <h2 id="admin-desktop-title">Dashboard</h2>
+        <p class="admin-desktop-subtitle">Welcome back! Here is your restaurant's overview.</p>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <button class="btn btn-secondary btn-sm" onclick="loadAdminData()" style="margin-bottom:0">🔄 Refresh</button>
+        <button class="btn btn-danger-glow btn-sm" onclick="handleAdminLogout()">Logout ↗</button>
+      </div>
+    </header>
 
-  <!-- Orders Tab -->
-  <div id="admin-orders-tab">
+    <!-- Subscription Status Banner (populated by JS) -->
+    <div id="subscription-banner-container"></div>
+
+    <!-- Hidden element for compatibility with old stats update references -->
+    <div id="admin-stats" class="hidden">
+      <div id="stat-total"></div>
+      <div id="stat-revenue"></div>
+      <div id="stat-active"></div>
+      <div id="stat-avg"></div>
+    </div>
+
+    <!-- Tab 0: Dashboard Home (NEW) -->
+    <div id="admin-dashboard-tab">
+      <!-- 6 Stat Cards -->
+      <div class="stat-cards-enhanced">
+        <div class="stat-card-new glass">
+          <div class="scn-icon" style="background:rgba(255,94,20,0.1);color:var(--primary)">📋</div>
+          <div class="scn-content">
+            <div class="stat-val-new" id="stat-total-new">0</div>
+            <div class="scn-content-sub">
+              <div class="stat-label-new">Total Orders</div>
+            </div>
+          </div>
+        </div>
+        <div class="stat-card-new glass">
+          <div class="scn-icon" style="background:rgba(16,185,129,0.1);color:var(--success)">₹</div>
+          <div class="scn-content">
+            <div class="stat-val-new" id="stat-revenue-new">₹0</div>
+            <div class="scn-content-sub">
+              <div class="stat-label-new">Revenue</div>
+            </div>
+          </div>
+        </div>
+        <div class="stat-card-new glass">
+          <div class="scn-icon" style="background:rgba(59,130,246,0.1);color:#3b82f6">⏳</div>
+          <div class="scn-content">
+            <div class="stat-val-new" id="stat-active-new">0</div>
+            <div class="scn-content-sub">
+              <div class="stat-label-new">Active Orders</div>
+            </div>
+          </div>
+        </div>
+        <div class="stat-card-new glass">
+          <div class="scn-icon" style="background:rgba(139,92,246,0.1);color:#8b5cf6">✅</div>
+          <div class="scn-content">
+            <div class="stat-val-new" id="stat-completed-new">0</div>
+            <div class="scn-content-sub">
+              <div class="stat-label-new">Completed</div>
+            </div>
+          </div>
+        </div>
+        <div class="stat-card-new glass">
+          <div class="scn-icon" style="background:rgba(251,191,36,0.1);color:var(--secondary)">📊</div>
+          <div class="scn-content">
+            <div class="stat-val-new" id="stat-avg-new">₹0</div>
+            <div class="scn-content-sub">
+              <div class="stat-label-new">Avg Order</div>
+            </div>
+          </div>
+        </div>
+        <div class="stat-card-new glass">
+          <div class="scn-icon" style="background:rgba(236,72,153,0.1);color:#ec4899">🔥</div>
+          <div class="scn-content">
+            <div class="stat-val-new" id="stat-popular-new" style="font-size:1rem;word-break:break-all;line-height:1.2;font-weight:700">None</div>
+            <div class="scn-content-sub">
+              <div class="stat-label-new">Top Item</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Insights Grid (Popular Items Chart & Completion Insights) -->
+      <div class="dashboard-insights-grid">
+        <div class="insight-card glass">
+          <div class="ic-header">
+            <h3>🔥 Popular Items Today</h3>
+            <span class="ic-badge">Top 5</span>
+          </div>
+          <div class="ic-body" id="popular-items-chart-container">
+            <!-- Dynamic CSS Bar Chart -->
+            <div class="empty-state"><p>No orders today to calculate popularity.</p></div>
+          </div>
+        </div>
+
+        <div class="insight-card glass">
+          <div class="ic-header">
+            <h3>📈 Operations Insights</h3>
+            <span class="ic-badge" style="background:rgba(59,130,246,0.1);color:#3b82f6">Metrics</span>
+          </div>
+          <div class="ic-body operations-metrics">
+            <div class="metric-row">
+              <div class="metric-info">
+                <span class="metric-label">Order Completion Rate</span>
+                <span class="metric-value" id="metric-completion-rate">0%</span>
+              </div>
+              <div class="metric-bar-bg"><div class="metric-bar-fill" id="metric-completion-fill" style="width:0%"></div></div>
+            </div>
+            
+            <div class="metric-row" style="margin-top:20px">
+              <div class="metric-info">
+                <span class="metric-label">Payment Settled Rate</span>
+                <span class="metric-value" id="metric-payment-rate">0%</span>
+              </div>
+              <div class="metric-bar-bg"><div class="metric-bar-fill" id="metric-payment-fill" style="width:0%;background:var(--success)"></div></div>
+            </div>
+            
+            <div class="quick-tips-box" style="margin-top:24px">
+              <h4>💡 Management Quick Action</h4>
+              <p>Keep order preparation times accurate to maintain high customer satisfaction. Use the settings page to toggle payment methods or UPI IDs.</p>
+              <div style="margin-top:12px;display:flex;gap:8px">
+                <button class="btn btn-secondary btn-sm" onclick="switchAdminTab(document.querySelector('[data-tab=admin-settings-tab]'),'admin-settings-tab')" style="margin-bottom:0">Edit Settings</button>
+                <button class="btn btn-secondary btn-sm" onclick="switchAdminTab(document.querySelector('[data-tab=admin-menu-tab]'),'admin-menu-tab')" style="margin-bottom:0">Manage Menu</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Order Preview Panel -->
+      <div class="recent-orders-preview-section glass" style="margin-top:24px;padding:20px;border-radius:var(--radius)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="font-family:var(--font-head);font-weight:800;font-size:1.1rem;margin-bottom:0">🔔 Active Orders Preview</h3>
+          <a onclick="switchAdminTab(document.querySelector('[data-tab=admin-orders-tab]'),'admin-orders-tab')" style="color:var(--primary);cursor:pointer;font-size:0.85rem;font-weight:700;text-decoration:none">View All Active Orders &rarr;</a>
+        </div>
+        <div id="admin-recent-orders-list">
+          <div class="empty-state"><p>No active orders</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Orders Tab -->
+    <div id="admin-orders-tab" class="hidden">
     <div class="search-box" style="margin-bottom:16px">
       <span class="search-icon">🔍</span>
       <input type="text" id="admin-orders-search" placeholder="Search orders by ID, name, table or items..." oninput="filterAdminOrders()" autocorrect="off" autocapitalize="none" spellcheck="false">
@@ -649,6 +821,7 @@
       <button class="btn btn-primary btn-block" onclick="saveAdminSettings()">💾 Save Settings</button>
     </div>
   </div>
+  </main>
 </div>
 
   </div>

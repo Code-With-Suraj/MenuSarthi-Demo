@@ -1765,7 +1765,8 @@ async function handleAdminLogin(){
         const dashEl=$('admin-dashboard');
         if(dashEl) dashEl.classList.add('admin-expired-overlay');
       } else {
-        loadAdminData();
+        // Switch to dashboard home tab upon login
+        switchAdminTab(document.querySelector('[data-tab=admin-dashboard-tab]'), 'admin-dashboard-tab');
         startAdminRefresh();
       }
     }
@@ -1781,20 +1782,182 @@ function handleAdminLogout(){
 }
 
 function switchAdminTab(btn,tabId){
-  document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');
-  ['admin-orders-tab','admin-menu-tab','admin-addons-tab','admin-combos-tab','admin-reports-tab','admin-qr-tab','admin-settings-tab'].forEach(id=>{$(id).classList.toggle('hidden',id!==tabId)});
+  document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  
+  const tabs = ['admin-dashboard-tab','admin-orders-tab','admin-menu-tab','admin-addons-tab','admin-combos-tab','admin-reports-tab','admin-qr-tab','admin-settings-tab'];
+  tabs.forEach(id=>{
+    const el=$(id);
+    if(el) el.classList.toggle('hidden',id!==tabId);
+  });
+  
+  // Update title
+  const titleMap = {
+    'admin-dashboard-tab': '📊 Dashboard',
+    'admin-orders-tab': '🔔 Orders Queue',
+    'admin-menu-tab': '📋 Menu Management',
+    'admin-addons-tab': '🧩 Add-Ons Management',
+    'admin-combos-tab': '🏷️ Combos Management',
+    'admin-reports-tab': '📊 Financial Reports',
+    'admin-qr-tab': '📱 QR Code Generator',
+    'admin-settings-tab': '⚙️ Settings'
+  };
+  const cleanTitle = titleMap[tabId] || 'Staff Dashboard';
+  if ($('admin-desktop-title')) $('admin-desktop-title').textContent = cleanTitle;
+  if ($('admin-current-tab-title')) $('admin-current-tab-title').textContent = cleanTitle;
+
+  // Close mobile sidebar
+  const sidebar = $('admin-sidebar');
+  const overlay = $('admin-sidebar-overlay');
+  if (sidebar && sidebar.classList.contains('active')) {
+    sidebar.classList.remove('active');
+    overlay.classList.remove('active');
+  }
   
   if($('admin-orders-search')) $('admin-orders-search').value = '';
   if($('admin-menu-search')) $('admin-menu-search').value = '';
   if($('admin-addons-search')) $('admin-addons-search').value = '';
   if($('admin-combos-search')) $('admin-combos-search').value = '';
 
+  if(tabId==='admin-dashboard-tab')loadAdminData();
   if(tabId==='admin-menu-tab')loadAdminMenu();
   if(tabId==='admin-addons-tab')loadAdminAddOns();
   if(tabId==='admin-combos-tab')loadAdminCombos();
   if(tabId==='admin-reports-tab')initReportsTab();
   if(tabId==='admin-qr-tab')initQRTab();
-  if(tabId==='admin-settings-tab')loadAdminSettings()
+  if(tabId==='admin-settings-tab')loadAdminSettings();
+}
+
+function toggleAdminSidebar() {
+  const sidebar = $('admin-sidebar');
+  const overlay = $('admin-sidebar-overlay');
+  if (sidebar && overlay) {
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
+  }
+}
+
+function animateCounter(el, targetValue) {
+  if (!el) return;
+  const duration = 600; // ms
+  const isCurrency = el.textContent.includes('₹') || (typeof targetValue === 'string' && targetValue.includes('₹')) || el.id.includes('revenue') || el.id.includes('avg');
+  const startText = el.textContent || '0';
+  const start = parseInt(startText.replace(/[^0-9]/g, ''), 10) || 0;
+  const target = typeof targetValue === 'string' ? parseInt(targetValue.replace(/[^0-9]/g, ''), 10) || 0 : targetValue;
+  
+  if (start === target) {
+    el.textContent = isCurrency ? '₹' + target : target;
+    return;
+  }
+  
+  const startTime = performance.now();
+  
+  function update(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const ease = progress * (2 - progress);
+    const current = Math.floor(start + (target - start) * ease);
+    
+    el.textContent = isCurrency ? '₹' + current : current;
+    
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    } else {
+      el.textContent = isCurrency ? '₹' + target : target;
+    }
+  }
+  
+  requestAnimationFrame(update);
+}
+
+function renderDashboardInsights(stats, orders) {
+  // Stats update
+  animateCounter($('stat-total-new'), stats.totalOrders || 0);
+  animateCounter($('stat-revenue-new'), stats.totalRevenue || 0);
+  animateCounter($('stat-active-new'), stats.activeOrders || 0);
+  animateCounter($('stat-completed-new'), stats.completedOrders || 0);
+  animateCounter($('stat-avg-new'), stats.avgOrderValue || 0);
+  
+  const topItem = stats.popularItems && stats.popularItems.length > 0 ? stats.popularItems[0].name : 'None';
+  if ($('stat-popular-new')) {
+    $('stat-popular-new').textContent = topItem;
+    $('stat-popular-new').title = topItem; // tooltip for long names
+  }
+
+  // Chart rendering
+  const chartContainer = $('popular-items-chart-container');
+  if (chartContainer) {
+    if (!stats.popularItems || !stats.popularItems.length) {
+      chartContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">🍳</div><p>No orders processed today to display popularity metrics.</p></div>';
+    } else {
+      const maxCount = Math.max(...stats.popularItems.map(i => i.count));
+      chartContainer.innerHTML = '<div class="popular-items-chart">' + 
+        stats.popularItems.map(item => {
+          const percentage = maxCount > 0 ? Math.round((item.count / maxCount) * 100) : 0;
+          return `
+            <div class="chart-bar-row">
+              <div class="chart-bar-info">
+                <span class="chart-bar-name">${item.name}</span>
+                <span class="chart-bar-qty">${item.count} sold</span>
+              </div>
+              <div class="chart-bar-track">
+                <div class="chart-bar-fill" style="width: ${percentage}%"></div>
+              </div>
+            </div>
+          `;
+        }).join('') +
+      '</div>';
+    }
+  }
+
+  // Operations metrics
+  const compRate = stats.totalOrders > 0 ? Math.round((stats.completedOrders / stats.totalOrders) * 100) : 0;
+  if ($('metric-completion-rate')) $('metric-completion-rate').textContent = compRate + '%';
+  if ($('metric-completion-fill')) $('metric-completion-fill').style.width = compRate + '%';
+
+  // Payment settled rate calculation
+  const liveOrders = orders || [];
+  const totalVisible = liveOrders.length;
+  const paidVisible = liveOrders.filter(o => o.paymentStatus === 'Paid').length;
+  const completedPaid = stats.completedOrders || 0;
+  const totalAll = totalVisible + completedPaid;
+  const paidAll = paidVisible + completedPaid;
+  const payRate = totalAll > 0 ? Math.round((paidAll / totalAll) * 100) : 0;
+
+  if ($('metric-payment-rate')) $('metric-payment-rate').textContent = payRate + '%';
+  if ($('metric-payment-fill')) $('metric-payment-fill').style.width = payRate + '%';
+
+  // Recent orders preview rendering
+  const recentList = $('admin-recent-orders-list');
+  if (recentList) {
+    const activeOrders = liveOrders.filter(o => o.status !== 'Completed').slice(0, 3);
+    if (!activeOrders.length) {
+      recentList.innerHTML = '<div class="empty-state"><div class="empty-icon">🎉</div><p>No active orders in the queue.</p></div>';
+    } else {
+      recentList.innerHTML = activeOrders.map(o => {
+        const itemsStr = (o.items || []).map(i => i.name + ' × ' + i.qty).join(', ');
+        const statusBadgeClass = 'status-' + o.status;
+        return `
+          <div class="recent-order-preview-card">
+            <div class="ropc-info">
+              <div class="ropc-title">
+                <span class="ropc-id">${o.orderId}</span>
+                <span class="ropc-table">Table ${o.table || 'Takeaway'}</span>
+                <span class="status-badge ${statusBadgeClass.toLowerCase()}" style="font-size:0.65rem;padding:2px 6px">${o.status}</span>
+              </div>
+              <div class="ropc-details" title="${itemsStr}">${itemsStr}</div>
+              <div class="ropc-meta">
+                <span>₹${o.total}</span> • <span>${o.elapsed}</span>
+              </div>
+            </div>
+            <div class="ropc-actions">
+              <button class="btn btn-secondary btn-sm" style="margin-bottom:0;padding:4px 8px;font-size:0.75rem" onclick="switchAdminTab(document.querySelector('[data-tab=admin-orders-tab]'), 'admin-orders-tab')">Manage</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
 }
 
 // ===== ADMIN COMBO MANAGEMENT =====
@@ -2303,9 +2466,19 @@ async function loadAdminData(){
       S.adminOrders = orders.data;
       renderAdminOrders(orders.data);
     }
-    if(stats.success){const d=stats.data;$('stat-total').textContent=d.totalOrders;$('stat-revenue').textContent='₹'+d.totalRevenue;$('stat-active').textContent=d.activeOrders;$('stat-avg').textContent='₹'+d.avgOrderValue;
+    if(stats.success){
+      const d=stats.data;
+      $('stat-total').textContent=d.totalOrders;
+      $('stat-revenue').textContent='₹'+d.totalRevenue;
+      $('stat-active').textContent=d.activeOrders;
+      $('stat-avg').textContent='₹'+d.avgOrderValue;
+      
+      // Trigger animated updates and insights render
+      renderDashboardInsights(d, S.adminOrders);
+
       if(orders.success&&orders.data.length>S.adminOrderCount&&S.adminOrderCount>0)try{new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH+Jj4WBfXx9gYeOkI2Jh4aIjJGUko+Nh4WGiY6UmJaSjomGhYaKkZibmpiTjYeFhYmPl5yenJiSjIiFhYqSmZ6gnpqUjoqHh4uUm6Chn5yXkY2Kio2Wnp+fnZqWkY6MjZGZnp6dnJmVkY+OkZabnZ2cm5mWlJKSlZqdnJycm5qYlpWUl5udnJycm5qZl5aWmZydnJycm5qZmJeYm52cnJybm5qZmJibnZ2dnJybm5qamZqcnZ2cnJybm5ubm5ydnZ2cnJybm5ubm5ydnZ2cnJybm5ubnJ2dnZ2cnJyb').play()}catch(e){}
-      S.adminOrderCount=orders.success?orders.data.length:0}
+      S.adminOrderCount=orders.success?orders.data.length:0
+    }
   }catch(e){showToast('Failed to load data','error')}
 }
 
@@ -2524,6 +2697,7 @@ async function loadAdminSettings(){
     const r=await callServer('getInitData');
     if(r.success){
       const d=r.data;
+      if ($('admin-sidebar-restaurant-name')) $('admin-sidebar-restaurant-name').textContent = d.restaurantName || 'MenuSarthi';
       $('cfg-name').value=d.restaurantName||'';
       $('cfg-tagline').value=d.restaurantTagline||'';
       $('cfg-logo').value=d.logoUrl||'';
@@ -2596,6 +2770,7 @@ async function saveAdminSettings(){
       S.config.paymentTiming=data.paymentTiming;
       document.title=data.restaurantName+' — Digital Menu';
       $('landing-name').textContent=data.restaurantName;
+      if ($('admin-sidebar-restaurant-name')) $('admin-sidebar-restaurant-name').textContent = data.restaurantName;
       $('landing-tagline').textContent=data.restaurantTagline;
       const logoEl=$('landing-logo');
       if(data.logoUrl){logoEl.innerHTML='<img src="'+data.logoUrl+'" alt="Logo" style="width:100%;height:100%;object-fit:cover;border-radius:28px">'}
@@ -3827,6 +4002,7 @@ function applyBootstrapData(d) {
   
   // White-label branding
   const rName = config.restaurantName || 'MenuSarthi';
+  if ($('admin-sidebar-restaurant-name')) $('admin-sidebar-restaurant-name').textContent = rName;
   const nameEl = $('landing-name');
   if (nameEl) nameEl.textContent = rName;
   const taglineEl = $('landing-tagline');
