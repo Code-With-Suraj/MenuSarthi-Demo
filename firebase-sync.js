@@ -34,7 +34,7 @@ const FirebaseSync = {
   async loginAdmin() {
     await this.init();
     
-    const spreadsheetId = CONFIG.SPREADSHEET_ID || "default";
+    const spreadsheetId = (CONFIG.SPREADSHEET_ID || "default").toLowerCase();
     const email = `admin_${spreadsheetId}@menusarthi.com`;
     const password = `auth_${spreadsheetId}`;
 
@@ -73,7 +73,7 @@ const FirebaseSync = {
 
   getOrdersRef() {
     if (!this.db) return null;
-    const spreadsheetId = CONFIG.SPREADSHEET_ID || "default";
+    const spreadsheetId = (CONFIG.SPREADSHEET_ID || "default").toLowerCase();
     return this.db.ref(`restaurants/${spreadsheetId}/orders`);
   },
 
