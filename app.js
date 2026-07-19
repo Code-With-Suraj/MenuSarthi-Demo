@@ -3752,6 +3752,19 @@ function renderSubscriptionBanner() {
 
 let selectedSubPlanId = null;
 
+function formatSavings(savingsVal) {
+  if (!savingsVal) return '';
+  const str = savingsVal.toString().trim();
+  const num = parseFloat(str);
+  if (!isNaN(num) && num > 0 && num < 1) {
+    return Math.round(num * 100) + '%';
+  }
+  if (!isNaN(num) && num >= 1 && !str.includes('%')) {
+    return str + '%';
+  }
+  return str;
+}
+
 async function loadSubscriptionInSettings() {
   const statusCard = $('cfg-sub-status-card');
   const plansGrid = $('cfg-sub-plans-grid');
@@ -3809,7 +3822,7 @@ async function loadSubscriptionInSettings() {
           ${plans.map(p => {
             const isCurrent = sub.plan && sub.plan.toLowerCase() === p.name.toLowerCase() && sub.isActive;
             const cardClass = isCurrent ? 'plan-card active' : 'plan-card';
-            const savingsHtml = p.savings ? `<div class="plan-savings-badge">Save ${p.savings}</div>` : '';
+            const savingsHtml = p.savings ? `<div class="plan-savings-badge">Save ${formatSavings(p.savings)}</div>` : '';
             const recClass = p.id === 'yearly' ? 'recommended' : '';
             return `
               <div class="${cardClass} ${recClass}" id="plan-${p.id}" onclick="selectSubPlan('${p.id}')">
@@ -3951,7 +3964,7 @@ async function loadExpiredPlans() {
               <div class="plan-name" style="font-weight:700; margin-bottom:4px; font-size:0.85rem;">${p.name}</div>
               <div class="plan-price" style="font-size:1.4rem; font-weight:800; color:#fff; margin-bottom:4px;">₹${p.price}</div>
               <div class="plan-duration" style="font-size:0.7rem; color:var(--text3);">${p.description}</div>
-              ${p.savings ? `<div class="plan-savings-badge" style="font-size:0.6rem; margin-top:6px; display:inline-block;">Save ${p.savings}</div>` : ''}
+              ${p.savings ? `<div class="plan-savings-badge" style="font-size:0.6rem; margin-top:6px; display:inline-block;">Save ${formatSavings(p.savings)}</div>` : ''}
             </div>
           `).join('')}
         </div>
