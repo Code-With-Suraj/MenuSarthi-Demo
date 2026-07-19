@@ -497,11 +497,20 @@ function addWithPortion(id,portion,price,type){
 }
 
 // ===== SMART CHECKOUT UPSELLING MODAL =====
-function showUpsellModal(item, combos, addons) {
+function showUpsellModal(item, combos, addons, selectedPortion, selectedPrice) {
   const sheet = $('upsell-sheet');
   const overlay = $('upsell-overlay');
   if (!sheet || !overlay) return;
-  
+
+  // Determine the correct "add item" call based on whether a portion was pre-selected
+  const hasPortion = selectedPortion && selectedPortion !== '';
+  const addItemCall = hasPortion
+    ? `addWithPortion('${item.id}','${selectedPortion}',${selectedPrice},'${item.type}')`
+    : `addStandardToCart('${item.id}')`;
+  const justAddLabel = hasPortion
+    ? `Just add ${item.name} (${selectedPortion}) — ₹${selectedPrice}`
+    : `Just add standard ${item.name}`;
+
   let html = `
     <div class="portion-handle"></div>
     <div class="upsell-title-container">
@@ -510,7 +519,7 @@ function showUpsellModal(item, combos, addons) {
     </div>
     <div class="upsell-grid">
   `;
-  
+
   // 1. Render Combos
   if (combos.length > 0) {
     combos.forEach(c => {
@@ -534,13 +543,13 @@ function showUpsellModal(item, combos, addons) {
       `;
     });
   }
-  
+
   // 2. Render Add-ons
   if (addons.length > 0) {
     addons.forEach(a => {
       const img = a.image ? `<img src="${a.image}" alt="${a.name}" loading="lazy">` : '<span style="font-size: 2.2rem">🍛</span>';
       html += `
-        <div class="upsell-card" onclick="addAddOnToCart('${a.id}', '${a.name.replace(/'/g,"\\'")}', ${a.price}, '${a.type}'); addStandardToCart('${item.id}'); closeUpsellModal();">
+        <div class="upsell-card" onclick="addAddOnToCart('${a.id}', '${a.name.replace(/'/g,"\\'")}', ${a.price}, '${a.type}'); ${addItemCall}; closeUpsellModal();">
           <span class="upsell-card-tag" style="background:linear-gradient(135deg,#2ecc71,#27ae60); color:#fff">Extra</span>
           <div class="upsell-card-img">${img}</div>
           <div class="upsell-card-info">
@@ -557,14 +566,14 @@ function showUpsellModal(item, combos, addons) {
       `;
     });
   }
-  
+
   html += `
     </div>
     <div class="upsell-actions">
-      <button class="btn btn-secondary btn-block" onclick="addStandardToCart('${item.id}'); closeUpsellModal();">Just add standard ${item.name}</button>
+      <button class="btn btn-secondary btn-block" onclick="${addItemCall}; closeUpsellModal();">${justAddLabel}</button>
     </div>
   `;
-  
+
   sheet.innerHTML = html;
   overlay.classList.add('active');
 }
@@ -4651,21 +4660,22 @@ function handleDetailAddToCart(itemId) {
   const sheet = $('dish-detail-sheet');
   const portion = sheet.dataset.selectedPortion || '';
   const price = parseFloat(sheet.dataset.selectedPrice);
-  
+  const cartId = portion ? `${itemId}__${portion}` : itemId;
+
   const item = findMenuItem(itemId);
   if (!item) return;
 
   // Smart Upselling Touchpoint: Check for matching combos or linked add-ons
   const matchingCombos = (S.combos || []).filter(c => c.available && c.includedItems && c.includedItems.split(',').map(s=>s.trim()).includes(itemId));
   const matchingAddons = (S.adminAddons || []).filter(a => a.available && a.linkedItems && a.linkedItems.split(',').map(s=>s.trim()).includes(itemId));
-  
-  if ((matchingCombos.length > 0 || matchingAddons.length > 0) && !S.cart.some(c => c.id === itemId)) {
+
+  if ((matchingCombos.length > 0 || matchingAddons.length > 0) && !S.cart.some(c => c.id === cartId)) {
     closeDishDetail();
-    showUpsellModal(item, matchingCombos, matchingAddons);
+    // Pass the selected portion & price so the upsell modal adds the correct size at the correct price
+    showUpsellModal(item, matchingCombos, matchingAddons, portion, price);
     return;
   }
 
-  const cartId = portion ? `${itemId}__${portion}` : itemId;
   const existing = S.cart.find(c => c.id === cartId);
   if (existing) {
     existing.qty++;
@@ -5107,48 +5117,64 @@ setTimeout(() => {
 
 function applyOffer(offerId) {
   const offer = (S.offers || []).find(o => o.id === offerId);
-  if (offer) {
-    const subtotal = S.cart.reduce((s,c)=>s+c.price*c.qty,0);
-    if (subtotal >= offer.minOrderValue) {
-      S.appliedOffer = offer;
-      
-      // Auto-add free dish if it is a specific free dish offer and not already in cart
-      if (offer.type === 'free_dish' && offer.freeDishId && offer.freeDishId !== 'any') {
-        const dishId = offer.freeDishId;
-        const isInCart = S.cart.some(c => c.id.split('__')[0] === dishId);
-        if (!isInCart) {
-          const item = findMenuItem(dishId);
-          if (item) {
-            let cartId = item.id;
-            let portion = '';
-            let price = item.price;
-            if (item.portions && item.portions.length > 0) {
-              portion = item.portions[0];
-              price = item.portionPrices[0];
-              cartId = item.id + '__' + portion;
-            }
-            S.cart.push({
-              id: cartId,
-              name: item.name,
-              price: price,
-              qty: 1,
-              type: item.type || 'Veg',
-              portion: portion,
-              baseId: portion ? item.id : undefined
-            });
-            updateCartBadge();
-            showToast(`${item.name} added to your cart for free! 🎁`, 'success');
-          } else {
-            showToast(`Offer applied, but please add the free dish to your cart!`, 'info');
+  if (!offer) return;
+
+  // --- Per-account usage limit: client-side pre-check ---
+  const maxUsage = parseInt(offer.maxUsagePerAccount) || 0;
+  if (maxUsage > 0) {
+    const normalizedCode = (offer.code || '').toUpperCase().trim();
+    const usedCount = (S.myOrders || []).filter(o =>
+      (o.appliedOffer || '').toUpperCase().trim() === normalizedCode
+    ).length;
+    if (usedCount >= maxUsage) {
+      showToast(
+        `Offer limit reached! "${offer.code}" can only be used ${maxUsage} time${maxUsage > 1 ? 's' : ''} per account. You have already used it ${usedCount} time${usedCount > 1 ? 's' : ''}.`,
+        'error'
+      );
+      return;
+    }
+  }
+
+  const subtotal = S.cart.reduce((s,c)=>s+c.price*c.qty,0);
+  if (subtotal >= offer.minOrderValue) {
+    S.appliedOffer = offer;
+
+    // Auto-add free dish if it is a specific free dish offer and not already in cart
+    if (offer.type === 'free_dish' && offer.freeDishId && offer.freeDishId !== 'any') {
+      const dishId = offer.freeDishId;
+      const isInCart = S.cart.some(c => c.id.split('__')[0] === dishId);
+      if (!isInCart) {
+        const item = findMenuItem(dishId);
+        if (item) {
+          let cartId = item.id;
+          let portion = '';
+          let price = item.price;
+          if (item.portions && item.portions.length > 0) {
+            portion = item.portions[0];
+            price = item.portionPrices[0];
+            cartId = item.id + '__' + portion;
           }
+          S.cart.push({
+            id: cartId,
+            name: item.name,
+            price: price,
+            qty: 1,
+            type: item.type || 'Veg',
+            portion: portion,
+            baseId: portion ? item.id : undefined
+          });
+          updateCartBadge();
+          showToast(`${item.name} added to your cart for free! 🎁`, 'success');
+        } else {
+          showToast(`Offer applied, but please add the free dish to your cart!`, 'info');
         }
       }
-      
-      renderCart();
-      showToast(`Offer ${offer.code} applied successfully! 🎉`, 'success');
-    } else {
-      showToast(`Minimum order value of ₹${offer.minOrderValue} not met.`, 'error');
     }
+
+    renderCart();
+    showToast(`Offer ${offer.code} applied successfully! 🎉`, 'success');
+  } else {
+    showToast(`Minimum order value of ₹${offer.minOrderValue} not met.`, 'error');
   }
 }
 
