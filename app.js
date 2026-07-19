@@ -224,6 +224,9 @@ function _buildParams(action, args) {
       return { orderId: args[0] };
     case 'deleteCombo':
       return { comboId: args[0] };
+    case 'deleteOffer':
+    case 'toggleOfferAvailability':
+      return { offerId: args[0] };
     case 'updateOrderStatus':
       return { orderId: args[0], status: args[1], etaMinutes: args[2] };
     case 'updateOrderPaymentStatus':
