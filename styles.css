@@ -1954,8 +1954,10 @@ h4 { font-size: 1.05rem; font-weight: 600; }
 
 .admin-menu-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 12px;
   padding: 16px;
   margin-bottom: 12px;
   border-radius: var(--radius-sm);
@@ -1971,9 +1973,10 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   transform: translateY(-1px);
 }
 
-.admin-menu-item .ami-info {
-  flex: 1;
-  min-width: 0;
+.admin-menu-item > .ami-info {
+  width: 100%;
+  flex: none;
+  margin-bottom: 6px;
 }
 
 .admin-menu-item .ami-info h4 {
@@ -1981,9 +1984,11 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   font-weight: 700;
   color: var(--text);
   margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
+}
+
+.admin-menu-item > .toggle-switch {
+  margin-right: auto;
 }
 
 .admin-menu-item .ami-info .ami-meta {
