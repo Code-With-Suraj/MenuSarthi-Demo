@@ -394,7 +394,52 @@ function renderMenuItems(cat){
   })
 }
 
-function filterMenu(){const active=document.querySelector('.cat-tab.active');if(active)renderMenuItems(active.textContent)}
+function filterMenu() {
+  const q = ($('menu-search').value || '').toLowerCase().trim();
+  const activeTab = document.querySelector('.cat-tab.active');
+  const activeCat = activeTab ? activeTab.textContent : (S.categories[0] || '');
+  
+  if (!q) {
+    if (activeCat) renderMenuItems(activeCat);
+    return;
+  }
+  
+  // 1. Check if the currently active category has a match (prevents unnecessary tab jumping)
+  const currentHasMatch = (S.menu[activeCat] || []).some(it => it.name.toLowerCase().includes(q));
+  
+  let matchedCat = null;
+  if (currentHasMatch) {
+    matchedCat = activeCat;
+  } else {
+    // 2. Search other categories
+    for (const cat of S.categories) {
+      if (cat === activeCat) continue;
+      const hasMatch = (S.menu[cat] || []).some(it => it.name.toLowerCase().includes(q));
+      if (hasMatch) {
+        matchedCat = cat;
+        break;
+      }
+    }
+  }
+  
+  if (matchedCat) {
+    if (matchedCat !== activeCat) {
+      // Switch active tab indicator visually
+      const tabs = document.querySelectorAll('.cat-tab');
+      tabs.forEach(tab => {
+        if (tab.textContent === matchedCat) {
+          tabs.forEach(b => b.classList.remove('active'));
+          tab.classList.add('active');
+          tab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      });
+    }
+    renderMenuItems(matchedCat);
+  } else {
+    // No match found anywhere, render empty state under current category tab
+    renderMenuItems(activeCat);
+  }
+}
 
 function findMenuItem(id){for(const cat of S.categories){const it=(S.menu[cat]||[]).find(i=>i.id===id);if(it)return it}return null}
 
