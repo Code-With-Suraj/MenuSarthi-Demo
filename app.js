@@ -3,7 +3,7 @@ const INIT_TABLE = urlParams.get('table') || '';
 const INIT_PAGE = urlParams.get('page') || 'customer';
 
 const SESSION_KEY='ms_session';const ADMIN_SESSION_KEY='ms_admin_session';const SESSION_TTL=2*60*60*1000;
-const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null,currentOrderDetails:null,combos:[],offers:[],appliedOffer:null,discountAmount:0};
+const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null,subscriptionPlans:[],billingPeriod:'monthly',currentOrderDetails:null,combos:[],offers:[],appliedOffer:null,discountAmount:0};
 
 // ===== CLIENT-SIDE DATA CACHE (BOOTSTRAP LOADING & OFFLINE RESILIENCY) =====
 const DataCache = {
@@ -304,7 +304,7 @@ function navigateTo(view){
   $('bottom-nav').style.display=showNav?'flex':'none';
   const showFab=view==='menu'&&S.cart.length>0;
   $('cart-fab').classList.toggle('hidden',!showFab);
-  if(view==='menu'&&!S.menu.length)loadMenu();
+  if(view==='menu' && Object.keys(S.menu || {}).length === 0)loadMenu();
   if(view==='cart')renderCart();
   if(view==='orders')loadMyOrders();
   if(view==='admin')$('bottom-nav').style.display='none';
@@ -979,6 +979,9 @@ async function submitOrder(){
   try{
     const r=await callServer('placeOrder',data);hideLoader();
     if(r.success){
+      // Trigger background sync to write queued order to spreadsheet
+      callServer('syncPendingOrders').catch(err => console.warn('Background sync failed:', err));
+      
       S.currentOrder=r.data;
       
       // Sync placed order to Firebase Realtime Database
@@ -2037,6 +2040,17 @@ function handleAdminLogout(){
 }
 
 function switchAdminTab(btn,tabId){
+  const isStarter = S.subscriptionStatus && S.subscriptionStatus.isActive && S.subscriptionStatus.plan && S.subscriptionStatus.plan.toLowerCase().includes('starter');
+  const restricted = ['admin-addons-tab', 'admin-combos-tab', 'admin-offers-tab'];
+  if (isStarter && restricted.includes(tabId)) {
+    showToast('Add-ons, Combos, and Offers are not supported on the Starter plan. Please upgrade.', 'warning');
+    if (tabId !== 'admin-dashboard-tab') {
+      const dashBtn = document.querySelector('.admin-tab[data-tab="admin-dashboard-tab"]');
+      switchAdminTab(dashBtn, 'admin-dashboard-tab');
+    }
+    return;
+  }
+
   document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));
   if(btn) btn.classList.add('active');
   
@@ -3089,9 +3103,51 @@ async function loadAdminSettings(){
       $('cfg-gst-enabled').checked=d.gstEnabled===true;
       $('cfg-gst-rate').value=d.gstRate||5;
       $('cfg-gst-number').value=d.gstNumber||'';
-      $('cfg-razorpay-enabled').checked=d.razorpayEnabled===true;
-      $('cfg-razorpay-key-id').value=d.razorpayKeyId||'';
-      $('cfg-razorpay-key-secret').value='';
+      const isStarter = S.subscriptionStatus && S.subscriptionStatus.isActive && S.subscriptionStatus.plan && S.subscriptionStatus.plan.toLowerCase().includes('starter');
+      
+      const rzpCheckbox = $('cfg-razorpay-enabled');
+      const rzpKeyId = $('cfg-razorpay-key-id');
+      const rzpKeySecret = $('cfg-razorpay-key-secret');
+      const toggleRow = rzpCheckbox ? rzpCheckbox.closest('.gst-toggle-row') : null;
+      
+      if (isStarter) {
+        if (rzpCheckbox) {
+          rzpCheckbox.checked = false;
+          rzpCheckbox.disabled = true;
+        }
+        if (rzpKeyId) {
+          rzpKeyId.value = '';
+          rzpKeyId.disabled = true;
+        }
+        if (rzpKeySecret) {
+          rzpKeySecret.value = '';
+          rzpKeySecret.disabled = true;
+        }
+        
+        if (toggleRow && !document.getElementById('rzp-locked-badge')) {
+          const badge = document.createElement('span');
+          badge.id = 'rzp-locked-badge';
+          badge.style.color = '#fa5252';
+          badge.style.fontSize = '0.75rem';
+          badge.style.fontWeight = 'bold';
+          badge.style.marginLeft = '8px';
+          badge.style.flex = '1';
+          badge.style.textAlign = 'right';
+          badge.innerHTML = '🔒 Upgrade to Growth/Premium to unlock';
+          toggleRow.insertBefore(badge, toggleRow.querySelector('.toggle-switch'));
+        }
+      } else {
+        if (rzpCheckbox) rzpCheckbox.disabled = false;
+        if (rzpKeyId) rzpKeyId.disabled = false;
+        if (rzpKeySecret) rzpKeySecret.disabled = false;
+        
+        const badge = document.getElementById('rzp-locked-badge');
+        if (badge) badge.remove();
+        
+        if (rzpCheckbox) rzpCheckbox.checked = d.razorpayEnabled === true;
+        if (rzpKeyId) rzpKeyId.value = d.razorpayKeyId || '';
+        if (rzpKeySecret) rzpKeySecret.value = '';
+      }
       
       // Payment timing
       const timing = d.paymentTiming || 'prepaid';
@@ -4046,6 +4102,165 @@ function formatSavings(savingsVal) {
   return str;
 }
 
+function getPlanFeaturesHTML(planId) {
+  const planKey = planId.toLowerCase();
+  if (planKey.includes('starter')) {
+    return `
+      <ul class="plan-features-list">
+        <li><span class="feat-icon feat-yes">✅</span> QR Menu</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Menu</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Scan</li>
+        <li><span class="feat-icon feat-yes">✅</span> Basic Ordering</li>
+        <li><span class="feat-icon feat-yes">✅</span> Live Order Tracking</li>
+        <li><span class="feat-icon feat-no">❌</span> No Addons</li>
+        <li><span class="feat-icon feat-no">❌</span> No Combo</li>
+        <li><span class="feat-icon feat-no">❌</span> No upselling</li>
+        <li><span class="feat-icon feat-no">❌</span> No payment gateway</li>
+      </ul>
+    `;
+  } else if (planKey.includes('growth')) {
+    return `
+      <ul class="plan-features-list">
+        <li><span class="feat-icon feat-yes">✅</span> QR Menu</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Menu</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Scan</li>
+        <li><span class="feat-icon feat-yes">✅</span> Basic Ordering</li>
+        <li><span class="feat-icon feat-yes">✅</span> Live Order Tracking</li>
+        <li><span class="feat-icon feat-yes">✅</span> Restaurant Website</li>
+        <li><span class="feat-icon feat-yes">✅</span> Analytics Dashboard</li>
+        <li><span class="feat-icon feat-yes">✅</span> Customer Database</li>
+        <li><span class="feat-icon feat-yes">✅</span> Table Ordering</li>
+        <li><span class="feat-icon feat-yes">✅</span> Payment Integration</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Orders</li>
+        <li><span class="feat-icon feat-yes">✅</span> Addons</li>
+        <li><span class="feat-icon feat-yes">✅</span> Combo</li>
+        <li><span class="feat-icon feat-yes">✅</span> Upselling</li>
+        <li><span class="feat-icon feat-yes">✅</span> Offers</li>
+        <li><span class="feat-icon feat-no">❌</span> No Custom Domain</li>
+      </ul>
+    `;
+  } else if (planKey.includes('premium')) {
+    return `
+      <ul class="plan-features-list">
+        <li><span class="feat-icon feat-yes">✅</span> QR Menu</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Menu</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Scan</li>
+        <li><span class="feat-icon feat-yes">✅</span> Basic Ordering</li>
+        <li><span class="feat-icon feat-yes">✅</span> Live Order Tracking</li>
+        <li><span class="feat-icon feat-yes">✅</span> Restaurant Website</li>
+        <li><span class="feat-icon feat-yes">✅</span> Analytics Dashboard</li>
+        <li><span class="feat-icon feat-yes">✅</span> Customer Database</li>
+        <li><span class="feat-icon feat-yes">✅</span> Table Ordering</li>
+        <li><span class="feat-icon feat-yes">✅</span> Payment Integration</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Orders</li>
+        <li><span class="feat-icon feat-yes">✅</span> Addons</li>
+        <li><span class="feat-icon feat-yes">✅</span> Combo</li>
+        <li><span class="feat-icon feat-yes">✅</span> Upselling</li>
+        <li><span class="feat-icon feat-yes">✅</span> Offers</li>
+        <li><span class="feat-icon feat-yes">✅</span> Custom Domain</li>
+      </ul>
+    `;
+  }
+  return '';
+}
+
+function renderPlansGrid(container, plans, isExpiredView) {
+  if (!container) return;
+  const currentPeriod = S.billingPeriod || 'monthly';
+  const tiers = [
+    { key: 'starter', name: 'Starter' },
+    { key: 'growth', name: 'Growth' },
+    { key: 'premium', name: 'Premium' }
+  ];
+
+  const sub = S.subscriptionStatus || { plan: '', isActive: false };
+
+  let cardsHtml = '';
+  tiers.forEach(tier => {
+    const planId = tier.key + '_' + (currentPeriod === 'monthly' ? 'monthly' : 'yearly');
+    const p = plans.find(x => x.id === planId) || {
+      id: planId,
+      name: tier.name + ' - ' + (currentPeriod === 'monthly' ? 'Monthly' : 'Annual'),
+      price: tier.key === 'starter' ? (currentPeriod === 'monthly' ? 499 : 4999) : 
+             tier.key === 'growth' ? (currentPeriod === 'monthly' ? 999 : 9999) :
+             (currentPeriod === 'monthly' ? 1999 : 19999),
+      description: currentPeriod === 'monthly' ? '1 Month' : '12 Months',
+      savings: currentPeriod === 'yearly' ? '16%' : ''
+    };
+
+    const isCurrent = sub.plan && (
+      sub.plan.toLowerCase() === p.name.toLowerCase() || 
+      sub.plan.toLowerCase() === p.id.toLowerCase() ||
+      (sub.plan.toLowerCase().includes(tier.key) && sub.plan.toLowerCase().includes(currentPeriod === 'monthly' ? 'monthly' : 'annual'))
+    ) && sub.isActive;
+
+    const isSelected = isExpiredView 
+      ? selectedExpiredSubPlanId === p.id 
+      : selectedSubPlanId === p.id;
+
+    let cardClass = 'plan-card';
+    if (isCurrent) cardClass += ' active';
+    if (isSelected) cardClass += ' selected';
+    if (tier.key === 'growth') cardClass += ' recommended';
+
+    const savingsHtml = p.savings ? `<div class="plan-savings-badge">Save ${formatSavings(p.savings)}</div>` : '';
+    const pricePeriodText = currentPeriod === 'monthly' ? '/month' : '/year';
+
+    cardsHtml += `
+      <div class="${cardClass}" id="${isExpiredView ? 'plan-expired-' : 'plan-'}${p.id}" onclick="${isExpiredView ? 'selectExpiredSubPlan' : 'selectSubPlan'}('${p.id}')">
+        <div class="plan-name">${tier.name}</div>
+        <div class="plan-price">₹${p.price}<span class="price-period">${pricePeriodText}</span></div>
+        <div class="plan-duration">${p.description}</div>
+        ${savingsHtml}
+        ${getPlanFeaturesHTML(tier.key)}
+      </div>
+    `;
+  });
+
+  container.innerHTML = `
+    <div class="sub-plans-grid">
+      ${cardsHtml}
+    </div>
+  `;
+}
+
+function toggleBillingPeriod(isExpiredView) {
+  const toggle = $(isExpiredView ? 'billing-period-toggle-expired' : 'billing-period-toggle');
+  if (!toggle) return;
+  
+  S.billingPeriod = toggle.checked ? 'yearly' : 'monthly';
+  
+  const labelMonthly = $(isExpiredView ? 'toggle-label-monthly-expired' : 'toggle-label-monthly');
+  const labelYearly = $(isExpiredView ? 'toggle-label-yearly-expired' : 'toggle-label-yearly');
+  
+  if (S.billingPeriod === 'yearly') {
+    if (labelMonthly) labelMonthly.classList.remove('active');
+    if (labelYearly) labelYearly.classList.add('active');
+  } else {
+    if (labelMonthly) labelMonthly.classList.add('active');
+    if (labelYearly) labelYearly.classList.remove('active');
+  }
+  
+  const plans = S.subscriptionPlans || [];
+  if (isExpiredView) {
+    const plansGrid = $('expired-plans-grid-inner');
+    if (plansGrid) {
+      renderPlansGrid(plansGrid, plans, true);
+      let newPlanId = selectedExpiredSubPlanId || 'growth_monthly';
+      newPlanId = newPlanId.replace(/_(monthly|yearly)/, '_' + S.billingPeriod);
+      selectExpiredSubPlan(newPlanId);
+    }
+  } else {
+    const plansGrid = $('cfg-sub-plans-grid-inner');
+    if (plansGrid) {
+      renderPlansGrid(plansGrid, plans, false);
+      let newPlanId = selectedSubPlanId || 'growth_monthly';
+      newPlanId = newPlanId.replace(/_(monthly|yearly)/, '_' + S.billingPeriod);
+      selectSubPlan(newPlanId);
+    }
+  }
+}
+
 async function loadSubscriptionInSettings() {
   const statusCard = $('cfg-sub-status-card');
   const plansGrid = $('cfg-sub-plans-grid');
@@ -4060,11 +4275,10 @@ async function loadSubscriptionInSettings() {
       const sub = r.data.subscription;
       const plans = r.data.plans;
 
-      // Update S.subscriptionStatus just in case it updated
       S.subscriptionStatus = sub;
       S.subscriptionPlans = plans;
+      enforceAdminSidebarRestrictions();
 
-      // Render status card
       const statusText = sub.isActive 
         ? '<span style="color:var(--success); font-weight:bold">Active</span>' 
         : '<span style="color:var(--error); font-weight:bold">Expired</span>';
@@ -4097,34 +4311,30 @@ async function loadSubscriptionInSettings() {
         </div>
       `;
 
-      // Render plan cards
+      const currentChecked = S.billingPeriod === 'yearly' ? 'checked' : '';
+      const activeMonthly = S.billingPeriod === 'monthly' ? 'active' : '';
+      const activeYearly = S.billingPeriod === 'yearly' ? 'active' : '';
+      
       plansGrid.innerHTML = `
-        <div class="sub-plans-grid">
-          ${plans.map(p => {
-            const isCurrent = sub.plan && sub.plan.toLowerCase() === p.name.toLowerCase() && sub.isActive;
-            const cardClass = isCurrent ? 'plan-card active' : 'plan-card';
-            const savingsHtml = p.savings ? `<div class="plan-savings-badge">Save ${formatSavings(p.savings)}</div>` : '';
-            const recClass = p.id === 'yearly' ? 'recommended' : '';
-            return `
-              <div class="${cardClass} ${recClass}" id="plan-${p.id}" onclick="selectSubPlan('${p.id}')">
-                <div class="plan-name">${p.name}</div>
-                <div class="plan-price">₹${p.price}</div>
-                <div class="plan-duration">${p.description}</div>
-                ${savingsHtml}
-              </div>
-            `;
-          }).join('')}
+        <div class="billing-toggle-container">
+          <span class="toggle-label ${activeMonthly}" id="toggle-label-monthly">Monthly</span>
+          <label class="billing-toggle-switch">
+            <input type="checkbox" id="billing-period-toggle" onchange="toggleBillingPeriod(false)" ${currentChecked}>
+            <span class="billing-slider"></span>
+          </label>
+          <span class="toggle-label ${activeYearly}" id="toggle-label-yearly">Annual <span class="discount-badge">Save ~16%</span></span>
         </div>
+        <div id="cfg-sub-plans-grid-inner"></div>
         <button id="btn-pay-sub" class="btn btn-primary btn-block" style="margin-top:16px;" onclick="paySelectedSubscription()" disabled>
           💳 Select a plan above to Renew
         </button>
       `;
 
-      // Pre-select yearly plan if not currently active
-      if (plans.length > 0) {
-        const defaultPlan = plans.find(p => p.id === 'yearly') || plans[0];
-        selectSubPlan(defaultPlan.id);
-      }
+      const plansInner = $('cfg-sub-plans-grid-inner');
+      renderPlansGrid(plansInner, plans, false);
+
+      const defaultPlanId = 'growth_' + S.billingPeriod;
+      selectSubPlan(defaultPlanId);
     } else {
       statusCard.innerHTML = '<div style="color:var(--error); text-align:center; padding:10px;">Failed to load subscription status</div>';
     }
@@ -4135,7 +4345,7 @@ async function loadSubscriptionInSettings() {
 
 function selectSubPlan(planId) {
   selectedSubPlanId = planId;
-  document.querySelectorAll('.plan-card').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll('#cfg-sub-plans-grid-inner .plan-card').forEach(el => el.classList.remove('selected'));
   const selectedCard = $('plan-' + planId);
   if (selectedCard) {
     selectedCard.classList.add('selected');
@@ -4145,9 +4355,12 @@ function selectSubPlan(planId) {
   if (payBtn) {
     payBtn.disabled = false;
     const plans = S.subscriptionPlans || [
-      { id: 'monthly', name: 'Monthly', price: 999 },
-      { id: 'semiyearly', name: 'Semi-Yearly', price: 4999 },
-      { id: 'yearly', name: 'Yearly', price: 9999 }
+      { id: 'starter_monthly', name: 'Starter - Monthly', price: 499 },
+      { id: 'starter_yearly', name: 'Starter - Annual', price: 4999 },
+      { id: 'growth_monthly', name: 'Growth - Monthly', price: 999 },
+      { id: 'growth_yearly', name: 'Growth - Annual', price: 9999 },
+      { id: 'premium_monthly', name: 'Premium - Monthly', price: 1999 },
+      { id: 'premium_yearly', name: 'Premium - Annual', price: 19999 }
     ];
     const plan = plans.find(p => p.id === planId) || { name: 'Plan', price: 0 };
     payBtn.innerHTML = `💳 Pay ₹${plan.price} via Razorpay — Renew ${plan.name}`;
@@ -4188,15 +4401,12 @@ async function paySelectedSubscription() {
           if (verifyRes.success) {
             showToast('Subscription renewed successfully! 🎉', 'success');
             S.subscriptionStatus = verifyRes.data;
-            
-            // Re-render banner
+            enforceAdminSidebarRestrictions();
             renderSubscriptionBanner();
             
-            // Remove overlays
             const dashEl = $('admin-dashboard');
             if (dashEl) dashEl.classList.remove('admin-expired-overlay');
             
-            // Reload settings
             loadSubscriptionInSettings();
           } else {
             showToast(verifyRes.message || 'Verification failed', 'error');
@@ -4238,25 +4448,31 @@ async function loadExpiredPlans() {
     if (r.success && r.data) {
       const plans = r.data;
       S.subscriptionPlans = plans;
+
+      const currentChecked = S.billingPeriod === 'yearly' ? 'checked' : '';
+      const activeMonthly = S.billingPeriod === 'monthly' ? 'active' : '';
+      const activeYearly = S.billingPeriod === 'yearly' ? 'active' : '';
+
       el.innerHTML = `
-        <div class="sub-plans-grid" style="margin-top: 16px;">
-          ${plans.map(p => `
-            <div class="plan-card" id="plan-expired-${p.id}" onclick="selectExpiredSubPlan('${p.id}')" style="background:var(--surface); border:1px solid var(--border); padding:16px; border-radius:var(--radius-sm); text-align:center; cursor:pointer;">
-              <div class="plan-name" style="font-weight:700; margin-bottom:4px; font-size:0.85rem;">${p.name}</div>
-              <div class="plan-price" style="font-size:1.4rem; font-weight:800; color:#fff; margin-bottom:4px;">₹${p.price}</div>
-              <div class="plan-duration" style="font-size:0.7rem; color:var(--text3);">${p.description}</div>
-              ${p.savings ? `<div class="plan-savings-badge" style="font-size:0.6rem; margin-top:6px; display:inline-block;">Save ${formatSavings(p.savings)}</div>` : ''}
-            </div>
-          `).join('')}
+        <div class="billing-toggle-container" style="margin-top:12px; margin-bottom:12px;">
+          <span class="toggle-label ${activeMonthly}" id="toggle-label-monthly-expired">Monthly</span>
+          <label class="billing-toggle-switch">
+            <input type="checkbox" id="billing-period-toggle-expired" onchange="toggleBillingPeriod(true)" ${currentChecked}>
+            <span class="billing-slider"></span>
+          </label>
+          <span class="toggle-label ${activeYearly}" id="toggle-label-yearly-expired">Annual <span class="discount-badge">Save ~16%</span></span>
         </div>
+        <div id="expired-plans-grid-inner"></div>
         <button id="btn-pay-expired-sub" class="btn btn-primary btn-block" style="margin-top: 16px; background:linear-gradient(135deg, var(--primary), var(--secondary)); border:none; color:#08090c; font-weight:800;" onclick="payExpiredSubscription()" disabled>
           💳 Select a plan above to Renew
         </button>
       `;
+
+      const plansInner = $('expired-plans-grid-inner');
+      renderPlansGrid(plansInner, plans, true);
       
-      // Auto-select yearly plan
-      const defaultPlan = plans.find(p => p.id === 'yearly') || plans[0];
-      selectExpiredSubPlan(defaultPlan.id);
+      const defaultPlanId = 'growth_' + S.billingPeriod;
+      selectExpiredSubPlan(defaultPlanId);
     } else {
       el.innerHTML = '<div style="color:var(--error); text-align:center; padding:10px;">Failed to load plans</div>';
     }
@@ -4267,7 +4483,7 @@ async function loadExpiredPlans() {
 
 function selectExpiredSubPlan(planId) {
   selectedExpiredSubPlanId = planId;
-  document.querySelectorAll('#expired-plans-container .plan-card').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll('#expired-plans-grid-inner .plan-card').forEach(el => el.classList.remove('selected'));
   const selectedCard = $('plan-expired-' + planId);
   if (selectedCard) {
     selectedCard.classList.add('selected');
@@ -4277,9 +4493,12 @@ function selectExpiredSubPlan(planId) {
   if (payBtn) {
     payBtn.disabled = false;
     const plans = S.subscriptionPlans || [
-      { id: 'monthly', name: 'Monthly', price: 999 },
-      { id: 'semiyearly', name: 'Semi-Yearly', price: 4999 },
-      { id: 'yearly', name: 'Yearly', price: 9999 }
+      { id: 'starter_monthly', name: 'Starter - Monthly', price: 499 },
+      { id: 'starter_yearly', name: 'Starter - Annual', price: 4999 },
+      { id: 'growth_monthly', name: 'Growth - Monthly', price: 999 },
+      { id: 'growth_yearly', name: 'Growth - Annual', price: 9999 },
+      { id: 'premium_monthly', name: 'Premium - Monthly', price: 1999 },
+      { id: 'premium_yearly', name: 'Premium - Annual', price: 19999 }
     ];
     const plan = plans.find(p => p.id === planId) || { name: 'Plan', price: 0 };
     payBtn.innerHTML = `💳 Pay ₹${plan.price} via Razorpay — Renew ${plan.name}`;
@@ -4320,15 +4539,12 @@ async function payExpiredSubscription() {
           if (verifyRes.success) {
             showToast('Subscription renewed successfully! 🎉', 'success');
             S.subscriptionStatus = verifyRes.data;
-            
-            // Re-render banner
+            enforceAdminSidebarRestrictions();
             renderSubscriptionBanner();
             
-            // Remove overlays
             const dashEl = $('admin-dashboard');
             if (dashEl) dashEl.classList.remove('admin-expired-overlay');
             
-            // If settings is open, reload it
             if (S.currentView === 'admin') {
               loadSubscriptionInSettings();
             }
@@ -4375,6 +4591,18 @@ async function bootstrapApp() {
   return false;
 }
 
+function enforceAdminSidebarRestrictions() {
+  const isStarter = S.subscriptionStatus && S.subscriptionStatus.isActive && S.subscriptionStatus.plan && S.subscriptionStatus.plan.toLowerCase().includes('starter');
+  
+  const addonsTabBtn = document.querySelector('.admin-tab[data-tab="admin-addons-tab"]');
+  const combosTabBtn = document.querySelector('.admin-tab[data-tab="admin-combos-tab"]');
+  const offersTabBtn = document.querySelector('.admin-tab[data-tab="admin-offers-tab"]');
+  
+  if (addonsTabBtn) addonsTabBtn.style.display = isStarter ? 'none' : '';
+  if (combosTabBtn) combosTabBtn.style.display = isStarter ? 'none' : '';
+  if (offersTabBtn) offersTabBtn.style.display = isStarter ? 'none' : '';
+}
+
 function applyBootstrapData(d) {
   if (!d) return;
   
@@ -4382,6 +4610,8 @@ function applyBootstrapData(d) {
     S.config = d.init;
     if (d.init.subscriptionStatus) S.subscriptionStatus = d.init.subscriptionStatus;
   }
+  
+  enforceAdminSidebarRestrictions();
   
   if (d.combos) S.combos = d.combos;
   if (d.addOns) S.adminAddons = d.addOns;

@@ -1,7 +1,7 @@
 const CONFIG = {
   // Replace this with your Google Apps Script Web App Deployment URL
   // Example: "https://script.google.com/macros/s/.../exec"
-  GAS_API_URL: "https://script.google.com/macros/s/AKfycbw25OZxxnT0YdABP2J-9EQAr0EHMiOecrppDOfdQYQo2DMZluxHAGZOGVRX1tHBWRoKhA/exec",
+  GAS_API_URL: "https://script.google.com/macros/s/AKfycbzAe6hy97YlTdiaF8smvCRQGEgTjO62t2A9kalyIZEiLGndVufVdN86RvlceBq5wV5mvA/exec",
   
   // The Google Spreadsheet ID of this restaurant's database (used as a namespace for Firebase isolation)
   SPREADSHEET_ID: "1xoIKKpW_QJ__2X30_NXEPqrJxAEqW9gWvSXki2dAnx0",
