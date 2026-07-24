@@ -1099,7 +1099,7 @@ function getUserLocationGPS() {
     return;
   }
 
-  showLoader('Detecting GPS location & address...');
+  showLoader('Detecting exact GPS location & address...');
   navigator.geolocation.getCurrentPosition(
     async (position) => {
       const lat = position.coords.latitude;
@@ -1107,37 +1107,83 @@ function getUserLocationGPS() {
       S.deliveryLat = lat;
       S.deliveryLng = lng;
 
-      let addressText = `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      let formattedAddress = '';
 
+      // Primary Service: High-precision OpenStreetMap Nominatim with zoom=18 & address details
       try {
-        // Reverse Geocoding via OpenStreetMap / free map reverse geocoding API
-        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, {
+        const osmRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
           headers: { 'Accept-Language': 'en' }
         });
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.display_name) {
-            addressText = data.display_name;
+        if (osmRes.ok) {
+          const osmData = await osmRes.json();
+          if (osmData && osmData.address) {
+            const addr = osmData.address;
+            const parts = [];
+            
+            const placeName = addr.building || addr.house_number || addr.amenity || addr.shop || '';
+            const street = addr.road || addr.pedestrian || addr.footway || '';
+            const area = addr.suburb || addr.neighbourhood || addr.residential || addr.subdistrict || '';
+            const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
+            const state = addr.state || '';
+            const postcode = addr.postcode || '';
+
+            if (placeName) parts.push(placeName);
+            if (street) parts.push(street);
+            if (area) parts.push(area);
+            if (city) parts.push(city);
+            if (state) parts.push(state + (postcode ? ` - ${postcode}` : ''));
+
+            if (parts.length > 0) {
+              formattedAddress = parts.join(', ');
+            } else if (osmData.display_name) {
+              formattedAddress = osmData.display_name;
+            }
           }
         }
-      } catch (geoErr) {
-        console.warn('Reverse geocoding fetch error:', geoErr);
+      } catch (e) {
+        console.warn('OSM Geocode error:', e);
+      }
+
+      // Secondary Fallback Service: BigDataCloud Reverse Geocode Client API
+      if (!formattedAddress) {
+        try {
+          const bdcRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+          if (bdcRes.ok) {
+            const bdcData = await bdcRes.json();
+            const parts = [];
+            if (bdcData.locality) parts.push(bdcData.locality);
+            if (bdcData.city) parts.push(bdcData.city);
+            if (bdcData.principalSubdivision) parts.push(bdcData.principalSubdivision);
+            if (bdcData.postcode) parts.push(bdcData.postcode);
+
+            if (parts.length > 0) {
+              formattedAddress = parts.join(', ');
+            }
+          }
+        } catch (e) {
+          console.warn('BigDataCloud Geocode error:', e);
+        }
+      }
+
+      // Final fallback if both APIs fail
+      if (!formattedAddress) {
+        formattedAddress = `Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
       }
 
       hideLoader();
       const addrInput = $('checkout-address');
       if (addrInput) {
-        addrInput.value = addressText;
-        S.deliveryAddress = addressText;
+        addrInput.value = formattedAddress;
+        S.deliveryAddress = formattedAddress;
       }
-      showToast('📍 Address detected from GPS!', 'success');
+      showToast('📍 Exact GPS address detected!', 'success');
     },
     (err) => {
       hideLoader();
       console.error('GPS Location error:', err);
       showToast('Could not fetch location. Please type your address manually.', 'warning');
     },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
   );
 }
 
