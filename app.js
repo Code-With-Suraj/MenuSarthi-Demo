@@ -1099,19 +1099,38 @@ function getUserLocationGPS() {
     return;
   }
 
-  showLoader('Detecting GPS location...');
+  showLoader('Detecting GPS location & address...');
   navigator.geolocation.getCurrentPosition(
-    (position) => {
-      hideLoader();
-      S.deliveryLat = position.coords.latitude;
-      S.deliveryLng = position.coords.longitude;
+    async (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      S.deliveryLat = lat;
+      S.deliveryLng = lng;
 
-      const locStr = `Lat: ${position.coords.latitude.toFixed(5)}, Lng: ${position.coords.longitude.toFixed(5)}`;
-      const addrInput = $('checkout-address');
-      if (addrInput && !addrInput.value) {
-        addrInput.value = `[GPS Location: ${locStr}]`;
+      let addressText = `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+      try {
+        // Reverse Geocoding via OpenStreetMap / free map reverse geocoding API
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, {
+          headers: { 'Accept-Language': 'en' }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.display_name) {
+            addressText = data.display_name;
+          }
+        }
+      } catch (geoErr) {
+        console.warn('Reverse geocoding fetch error:', geoErr);
       }
-      showToast('📍 Location detected successfully!', 'success');
+
+      hideLoader();
+      const addrInput = $('checkout-address');
+      if (addrInput) {
+        addrInput.value = addressText;
+        S.deliveryAddress = addressText;
+      }
+      showToast('📍 Address detected from GPS!', 'success');
     },
     (err) => {
       hideLoader();
