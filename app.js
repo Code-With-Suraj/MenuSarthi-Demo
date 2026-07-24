@@ -600,6 +600,71 @@ setTimeout(() => {
   }
 }, 200);
 
+function addAddOnToCart(id, name, price, type) {
+  const cartId = 'addon_' + id;
+  const existing = S.cart.find(c => c.id === cartId);
+  if (existing) {
+    existing.qty++;
+  } else {
+    S.cart.push({
+      id: cartId,
+      name: name,
+      price: price,
+      qty: 1,
+      type: type || 'Veg',
+      portion: '',
+      isAddOn: true
+    });
+  }
+  updateCartBadge();
+  if (S.currentView === 'cart') renderCart();
+  showToast(name + ' added to cart! 🧩', 'success');
+}
+
+function loadCartAddOns() {
+  const adSec = $('cart-addons-section');
+  if (!adSec) return;
+
+  if (!S.cart || !S.cart.length || !S.adminAddons || !S.adminAddons.length) {
+    adSec.innerHTML = '';
+    return;
+  }
+
+  const cartBaseIds = S.cart.map(c => (c.baseId || c.id).split('__')[0]);
+  const cartAddOnIds = S.cart.filter(c => c.isAddOn).map(c => c.id.replace('addon_', ''));
+
+  const matchingAddons = S.adminAddons.filter(a => {
+    if (!a.available || cartAddOnIds.includes(a.id)) return false;
+    if (!a.linkedItems || a.linkedItems.trim() === '') return true;
+    const linkedList = a.linkedItems.split(',').map(s => s.trim());
+    return linkedList.some(linkId => cartBaseIds.includes(linkId));
+  });
+
+  if (!matchingAddons.length) {
+    adSec.innerHTML = '';
+    return;
+  }
+
+  adSec.innerHTML = `
+    <div class="cart-addons-wrapper glass" style="padding:14px; border:1px solid var(--border); border-radius:var(--radius); margin-bottom:16px;">
+      <h4 style="font-size:0.9rem; font-weight:700; color:var(--text1); margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+        <span>🧩 Recommended Add-Ons</span>
+      </h4>
+      <div class="cart-addons-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:10px;">
+        ${matchingAddons.map(a => `
+          <div class="cart-addon-item" style="display:flex; justify-content:space-between; align-items:center; background:var(--bg2); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--border);">
+            <div>
+              <div style="font-size:0.82rem; font-weight:600; color:var(--text1);">${a.type === 'Non-Veg' ? '🔴' : '🟢'} ${a.name}</div>
+              <div style="font-size:0.75rem; color:var(--primary); font-weight:700;">+ ₹${a.price}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" style="padding:4px 8px; font-size:0.75rem; margin:0;" onclick="addAddOnToCart('${a.id}', '${a.name.replace(/'/g, "\\'")}', ${a.price}, '${a.type}')">+ Add</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function addComboToCart(comboId) {
   const combo = (S.combos || []).find(c => c.id === comboId);
   if (!combo) return;
