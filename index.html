@@ -89,6 +89,27 @@
       <div class="table-badge" id="table-badge" style="display:none">
         <span>📍</span> Table <strong id="table-display"></strong>
       </div>
+      <!-- Order Mode Selector -->
+      <div class="order-mode-container" id="landing-order-mode-section">
+        <label style="font-size: 0.75rem; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px;">Choose Order Type</label>
+        <div class="order-mode-cards">
+          <div class="order-mode-card active" id="om-card-dinein" onclick="selectOrderMode('DINE_IN')">
+            <span class="om-icon">🍽️</span>
+            <span class="om-title">Dine-In</span>
+            <span class="om-sub" id="om-sub-dinein">Eat at restaurant</span>
+          </div>
+          <div class="order-mode-card" id="om-card-takeaway" onclick="selectOrderMode('TAKEAWAY')">
+            <span class="om-icon">🛍️</span>
+            <span class="om-title">Takeaway</span>
+            <span class="om-sub">Self pickup</span>
+          </div>
+          <div class="order-mode-card" id="om-card-delivery" onclick="selectOrderMode('DELIVERY')">
+            <span class="om-icon">🛵</span>
+            <span class="om-title">Delivery</span>
+            <span class="om-sub">To your doorstep</span>
+          </div>
+        </div>
+      </div>
       <div class="landing-actions">
         <button class="btn btn-primary btn-block" onclick="navigateTo('menu')">🍽️ View Menu</button>
         <button class="btn btn-secondary btn-block" onclick="showAuth('login')">👤 Login / Sign Up</button>
@@ -480,6 +501,12 @@
 
     <!-- Orders Tab -->
     <div id="admin-orders-tab" class="hidden">
+    <div class="admin-order-filters" id="admin-order-type-filters">
+      <button class="admin-order-filter-btn active" data-filter="ALL" onclick="filterAdminOrdersByType('ALL', this)">All Orders</button>
+      <button class="admin-order-filter-btn" data-filter="DINE_IN" onclick="filterAdminOrdersByType('DINE_IN', this)">🍽️ Dine-In</button>
+      <button class="admin-order-filter-btn" data-filter="TAKEAWAY" onclick="filterAdminOrdersByType('TAKEAWAY', this)">🛍️ Takeaway</button>
+      <button class="admin-order-filter-btn" data-filter="DELIVERY" onclick="filterAdminOrdersByType('DELIVERY', this)">🛵 Home Delivery</button>
+    </div>
     <div class="search-box" style="margin-bottom:16px">
       <span class="search-icon">🔍</span>
       <input type="text" id="admin-orders-search" placeholder="Search orders by ID, name, table or items..." oninput="filterAdminOrders()" autocorrect="off" autocapitalize="none" spellcheck="false">
@@ -825,6 +852,45 @@
           </div>
         </div>
         <input type="hidden" id="cfg-payment-timing" value="prepaid">
+      </div>
+
+      <!-- Delivery & Takeaway Options -->
+      <div class="gst-settings" style="margin-top:24px;">
+        <h4>🛵 Delivery & Takeaway Services</h4>
+        <p style="font-size:0.8rem; color:var(--text3); margin-top:-8px; margin-bottom:16px;">Configure order types allowed for customers and set delivery fee thresholds.</p>
+        
+        <div class="gst-toggle-row" style="margin-bottom:12px">
+          <span>Enable Dine-In Orders</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="cfg-dinein-enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="gst-toggle-row" style="margin-bottom:12px">
+          <span>Enable Takeaway / Pickup</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="cfg-takeaway-enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="gst-toggle-row" style="margin-bottom:16px">
+          <span>Enable Home Delivery</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="cfg-delivery-enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="gst-settings-grid">
+          <div class="input-group">
+            <label>Flat Delivery Fee (₹)</label>
+            <input type="number" id="cfg-delivery-fee" placeholder="40" min="0" step="1">
+          </div>
+          <div class="input-group">
+            <label>Free Delivery Threshold (₹)</label>
+            <input type="number" id="cfg-delivery-threshold" placeholder="500" min="0" step="10">
+          </div>
+        </div>
       </div>
 
       <!-- Subscription Settings -->

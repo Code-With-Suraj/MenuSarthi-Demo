@@ -154,6 +154,27 @@ const FirebaseSync = {
     }
   },
 
+  // Update order delivery status
+  async updateDeliveryStatus(orderId, deliveryStatus) {
+    await this.init();
+    const ordersRef = this.getOrdersRef();
+    if (!ordersRef) return;
+
+    try {
+      const updates = {
+        deliveryStatus: deliveryStatus,
+        lastUpdated: firebase.database.ServerValue.TIMESTAMP
+      };
+      if (deliveryStatus === 'Delivered') {
+        updates.status = 'Completed';
+      }
+      await ordersRef.child(orderId).update(updates);
+      console.log(`Order ${orderId} delivery status updated in Firebase to ${deliveryStatus}.`);
+    } catch (e) {
+      console.error("Error updating delivery status in Firebase:", e);
+    }
+  },
+
   // Update order payment status
   async updatePaymentStatus(orderId, paymentStatus) {
     await this.init();

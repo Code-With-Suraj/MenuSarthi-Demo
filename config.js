@@ -1,11 +1,11 @@
 const CONFIG = {
   // Replace this with your Google Apps Script Web App Deployment URL
   // Example: "https://script.google.com/macros/s/.../exec"
-  GAS_API_URL: "https://script.google.com/macros/s/AKfycby97r7lP7nkTH0BYrqLM7epd0vAQUsJjsC2FOkoemL_aSF8XivjgIRS_tgOzeEVgrwZEQ/exec",
-  
+  GAS_API_URL: "https://script.google.com/macros/s/AKfycbxXqD6vwBSLFZkj-wJcyIrpPkX42QVHrUdi2rooafbv-l3tE11j6Qoer6Ls5MtLaUFuag/exec",
+
   // The Google Spreadsheet ID of this restaurant's database (used as a namespace for Firebase isolation)
   SPREADSHEET_ID: "1xoIKKpW_QJ__2X30_NXEPqrJxAEqW9gWvSXki2dAnx0",
-  
+
   REQUEST_TIMEOUT: 30000,
 
   // Firebase Realtime Database configuration (shared/same for all clients)

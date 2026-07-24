@@ -3,7 +3,7 @@ const INIT_TABLE = urlParams.get('table') || '';
 const INIT_PAGE = urlParams.get('page') || 'customer';
 
 const SESSION_KEY='ms_session';const ADMIN_SESSION_KEY='ms_admin_session';const SESSION_TTL=2*60*60*1000;
-const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null,subscriptionPlans:[],billingPeriod:'monthly',currentOrderDetails:null,combos:[],offers:[],appliedOffer:null,discountAmount:0};
+const S={currentView:'landing',user:null,table:INIT_TABLE||'',menu:[],categories:[],cart:[],currentOrder:null,isAdmin:false,trackInterval:null,adminInterval:null,adminOrderCount:0,config:{},revisingOrderId:null,revisingNotes:'',revisionInterval:null,reportData:null,adminOrders:[],adminMenu:[],adminAddons:[],myOrders:[],subscriptionStatus:null,subscriptionPlans:[],billingPeriod:'monthly',currentOrderDetails:null,combos:[],offers:[],appliedOffer:null,discountAmount:0,orderType:'DINE_IN',deliveryAddress:'',deliveryLandmark:'',deliveryLat:null,deliveryLng:null,pickupTime:'',savedAddresses:[],selectedAddressId:null,adminOrderTypeFilter:'ALL'};
 
 // ===== CLIENT-SIDE DATA CACHE (BOOTSTRAP LOADING & OFFLINE RESILIENCY) =====
 const DataCache = {
@@ -734,14 +734,30 @@ function renderCart(){
   const gstOn=S.config&&S.config.gstEnabled;
   const gstRate=S.config?S.config.gstRate||5:5;
   const gstAmt=gstOn?Math.round(taxableSubtotal*gstRate/100*100)/100:0;
-  const grandTotal=taxableSubtotal+gstAmt;
+
+  // Calculate delivery fee
+  let deliveryFeeAmt = 0;
+  let deliveryFeeLine = '';
+  if (S.orderType === 'DELIVERY') {
+    const flatFee = (S.config && S.config.flatDeliveryFee !== undefined) ? parseFloat(S.config.flatDeliveryFee) : 40;
+    const freeThreshold = (S.config && S.config.freeDeliveryThreshold !== undefined) ? parseFloat(S.config.freeDeliveryThreshold) : 500;
+    if (subtotal >= freeThreshold && freeThreshold > 0) {
+      deliveryFeeAmt = 0;
+      deliveryFeeLine = '<div class="row" style="color:var(--success); font-weight:600;"><span>🛵 Delivery Fee</span><span>FREE</span></div>';
+    } else {
+      deliveryFeeAmt = flatFee;
+      deliveryFeeLine = '<div class="row"><span>🛵 Delivery Fee</span><span>₹' + flatFee.toFixed(2) + '</span></div>';
+    }
+  }
+
+  const grandTotal = taxableSubtotal + gstAmt + deliveryFeeAmt;
 
   const discountLine = S.appliedOffer ? `<div class="row" style="color: var(--success); font-weight: 600;"><span>🏷️ Discount (${S.appliedOffer.code})</span><span>-₹${S.discountAmount.toFixed(2)}</span></div>` : '';
   const gstLine=gstOn?'<div class="row"><span>GST ('+gstRate+'%)</span><span>₹'+gstAmt.toFixed(2)+'</span></div>':'';
   const gstinLine=(gstOn&&S.config.gstNumber)?'<div style="font-size:.7rem;color:var(--text3);margin-top:6px;text-align:right">GSTIN: '+S.config.gstNumber+'</div>':'';
   
   if(!S.user){
-    cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+discountLine+gstLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div><div class="checkout-section glass" style="padding:20px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius);margin-top:20px"><div style="font-size:1.5rem;margin-bottom:8px">🔒 Login Required</div><p style="font-size:.85rem;color:var(--text2);margin-bottom:16px">You must log in to place an order and track its status.</p><button class="btn btn-primary btn-block" onclick="showAuth(\'login\')">👤 Login / Sign Up to Order</button></div>';
+    cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+discountLine+gstLine+deliveryFeeLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div><div class="checkout-section glass" style="padding:20px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius);margin-top:20px"><div style="font-size:1.5rem;margin-bottom:8px">🔒 Login Required</div><p style="font-size:.85rem;color:var(--text2);margin-bottom:16px">You must log in to place an order and track its status.</p><button class="btn btn-primary btn-block" onclick="showAuth(\'login\')">👤 Login / Sign Up to Order</button></div>';
     return;
   }
 
@@ -799,124 +815,264 @@ function renderCart(){
     '<button class="btn btn-primary btn-block" style="background:linear-gradient(135deg,var(--primary),var(--secondary));" onclick="submitOrderRevision()">🔄 Update Order — ₹'+grandTotal.toFixed(2)+'</button>' : 
     '<button class="btn btn-primary btn-block" onclick="submitOrder()">🚀 Place Order — ₹'+grandTotal.toFixed(2)+'</button>';
 
-  // Table field: auto-locked when customer came via QR scan
-  const isQRTable = INIT_TABLE && INIT_TABLE !== '';
-  let tableFieldHtml;
-  if (isQRTable) {
-    tableFieldHtml = '<div class="input-group"><label>Table Number</label>' +
-      '<div class="qr-table-locked">' +
-        '<div class="qr-table-badge"><span class="qr-table-icon">📍</span> Table <strong>' + S.table + '</strong></div>' +
-        '<div class="qr-table-lock-hint">✅ Auto-detected via QR Code</div>' +
-      '</div>' +
-      '<input type="hidden" id="checkout-table" value="' + S.table + '">' +
-    '</div>';
-  } else {
-    tableFieldHtml = '<div class="input-group"><label>Table Number (optional)</label>' +
-      '<input type="number" id="checkout-table" value="' + S.table + '" placeholder="Enter table number (optional)" min="1">' +
-    '</div>';
-  }
+  // Order mode selector pills
+  const dineInActive = (S.orderType === 'DINE_IN' || !S.orderType) ? 'active' : '';
+  const takeawayActive = S.orderType === 'TAKEAWAY' ? 'active' : '';
+  const deliveryActive = S.orderType === 'DELIVERY' ? 'active' : '';
 
-  cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+discountLine+gstLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div>' + offersHtml + '<div class="checkout-section">'+tableFieldHtml+'<div class="input-group"><label>Special Instructions (optional)</label><textarea id="checkout-notes" placeholder="e.g. Extra spicy, no onions...">'+notesValue+'</textarea></div>'+submitBtn+'</div>';
-}
-
-async function loadCartAddOns(){
-  const adSec=$('cart-addons-section');if(!adSec||!S.cart.length){if(adSec)adSec.innerHTML='';return}
-  
-  // Show skeleton loading animations
-  adSec.innerHTML = `
-    <div class="addon-section">
-      <h3>🍽️ Complete Your Meal</h3>
-      <div class="addon-scroll">
-        <div class="addon-card" style="pointer-events:none;opacity:0.8">
-          <div class="addon-card-img skeleton" style="height:80px;width:100%"></div>
-          <div class="skeleton" style="height:12px;width:80%;margin:8px auto 6px auto"></div>
-          <div class="skeleton" style="height:12px;width:40%;margin:0 auto 10px auto"></div>
-          <div class="skeleton" style="height:26px;width:100%;border-radius:var(--radius-xs)"></div>
-        </div>
-        <div class="addon-card" style="pointer-events:none;opacity:0.8">
-          <div class="addon-card-img skeleton" style="height:80px;width:100%"></div>
-          <div class="skeleton" style="height:12px;width:70%;margin:8px auto 6px auto"></div>
-          <div class="skeleton" style="height:12px;width:50%;margin:0 auto 10px auto"></div>
-          <div class="skeleton" style="height:26px;width:100%;border-radius:var(--radius-xs)"></div>
-        </div>
+  const orderModePillsHtml = `
+    <div class="input-group" style="margin-bottom:16px;">
+      <label>Choose Fulfillment Mode</label>
+      <div class="order-type-pills">
+        <button type="button" class="order-type-pill ${dineInActive}" id="om-pill-dinein" onclick="selectOrderMode('DINE_IN')">🍽️ Dine-In</button>
+        <button type="button" class="order-type-pill ${takeawayActive}" id="om-pill-takeaway" onclick="selectOrderMode('TAKEAWAY')">🛍️ Takeaway</button>
+        <button type="button" class="order-type-pill ${deliveryActive}" id="om-pill-delivery" onclick="selectOrderMode('DELIVERY')">🛵 Home Delivery</button>
       </div>
     </div>
   `;
 
-  const ids=S.cart.map(c=>c.baseId||c.id.split('__')[0]);
-  try{
-    const r=await callServer('getAddOnsForCart',ids);
-    let addons = [];
-    if(r && r.success && r.data){
-      const cartIds=S.cart.map(c=>c.id.split('__')[0]);
-      addons = r.data.filter(a=>!cartIds.includes(a.id));
+  // Specific fulfillment fields
+  let fulfillmentFieldsHtml = '';
+  if (S.orderType === 'DINE_IN' || !S.orderType) {
+    const isQRTable = INIT_TABLE && INIT_TABLE !== '';
+    if (isQRTable) {
+      fulfillmentFieldsHtml = '<div class="input-group"><label>Table Number</label>' +
+        '<div class="qr-table-locked">' +
+          '<div class="qr-table-badge"><span class="qr-table-icon">📍</span> Table <strong>' + S.table + '</strong></div>' +
+          '<div class="qr-table-lock-hint">✅ Auto-detected via QR Code</div>' +
+        '</div>' +
+        '<input type="hidden" id="checkout-table" value="' + S.table + '">' +
+      '</div>';
+    } else {
+      fulfillmentFieldsHtml = '<div class="input-group"><label>Table Number (optional)</label>' +
+        '<input type="number" id="checkout-table" value="' + S.table + '" placeholder="Enter table number (optional)" min="1">' +
+      '</div>';
     }
-    
-    // Find matching combos based on items in cart
-    const cartIds = S.cart.map(c => c.baseId || c.id.split('__')[0]);
-    const matchingCombos = (S.combos || []).filter(combo => {
-      if (!combo.available) return false;
-      // If combo is already in cart, skip
-      if (S.cart.some(c => c.id === 'combo_' + combo.id)) return false;
-      // If combo's included items contain any item in cart, suggest it
-      const included = (combo.includedItems || '').split(',').map(s => s.trim());
-      return included.some(itemId => cartIds.includes(itemId));
-    });
+  } else if (S.orderType === 'TAKEAWAY') {
+    fulfillmentFieldsHtml = `
+      <div class="input-group">
+        <label>Expected Pickup Time (optional)</label>
+        <input type="time" id="checkout-pickup-time" value="${S.pickupTime || ''}" onchange="S.pickupTime=this.value">
+      </div>
+    `;
+  } else if (S.orderType === 'DELIVERY') {
+    fulfillmentFieldsHtml = `
+      <div id="saved-addresses-container"></div>
+      <div class="input-group">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <label style="margin:0;">Delivery Address <span style="color:var(--error)">*</span></label>
+          <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:0.75rem; color:var(--primary);" onclick="getUserLocationGPS()">📍 Use GPS Location</button>
+        </div>
+        <textarea id="checkout-address" placeholder="Flat / House No., Building, Street Name..." style="min-height:70px;">${S.deliveryAddress || ''}</textarea>
+      </div>
+      <div class="input-group">
+        <label>Landmark (optional)</label>
+        <input type="text" id="checkout-landmark" placeholder="e.g. Near HDFC Bank, Opposite Park" value="${S.deliveryLandmark || ''}">
+      </div>
+      <div style="margin-bottom:16px;">
+        <button type="button" class="btn btn-secondary btn-sm" style="width:100%; font-size:0.8rem;" onclick="saveCurrentAddress()">💾 Save this Address for Future</button>
+      </div>
+    `;
 
-    if(!addons.length && !matchingCombos.length){
-      adSec.innerHTML='';
-      return;
-    }
-    
-    let html = '';
-    
-    // 1. Render Combos
-    if (matchingCombos.length > 0) {
-      html += `
-        <div class="addon-section" style="margin-bottom: 20px;">
-          <h3>🏷️ Upgrade to Combo Deal & Save!</h3>
-          <div class="addon-scroll">
-      `;
-      matchingCombos.forEach(c => {
-        const imgHtml = c.image ? '<img src="' + c.image + '" alt="' + c.name + '" loading="lazy">' : '<span style="font-size:1.8rem">🍱</span>';
-        html += `
-          <div class="addon-card combo-addon-card" style="border: 1px solid var(--primary); background: rgba(255, 107, 53, 0.04); min-width: 160px; text-align: center;">
-            <div class="addon-card-img">${imgHtml}</div>
-            <div class="ac-name" style="font-weight: 700; color: var(--primary);">${c.name}</div>
-            <div class="ac-desc" style="font-size: 0.68rem; color: var(--text3); margin-bottom: 8px; padding: 0 4px; line-height: 1.3; min-height: 38px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;" title="${c.includedNames || ''}">
-              ${c.description ? `<span style="font-weight: 700; color: var(--text2); display: block; margin-bottom: 2px;">${c.description}</span>` : ''}
-              <span style="font-style: italic;">Includes: ${c.includedNames || ''}</span>
-            </div>
-            <div class="ac-price">₹${c.price}</div>
-            <button class="ac-add" style="background: var(--primary-gradient); color: #fff; width: 100%; border: none; padding: 6px; border-radius: 4px; cursor: pointer;" onclick="addComboToCart('${c.id}'); renderCart();">+ COMBO</button>
-          </div>
-        `;
-      });
-      html += '</div></div>';
-    }
-    
-    // 2. Render Add-ons
-    if (addons.length > 0) {
-      html += '<div class="addon-section"><h3>🍽️ Complete Your Meal</h3><div class="addon-scroll">';
-      addons.forEach(a=>{
-        const imgHtml = a.image ? '<img src="' + a.image + '" alt="' + a.name + '" loading="lazy">' : '<span style="font-size:1.8rem">🍛</span>';
-        const badge = a.type === 'Non-Veg' ? '🔴' : '🟢';
-        html+='<div class="addon-card"><div class="addon-card-img">'+imgHtml+'</div><div class="ac-name">'+badge+' '+a.name+'</div><div class="ac-price">₹'+a.price+'</div><button class="ac-add" onclick="addAddOnToCart(\''+a.id+'\',\''+a.name.replace(/'/g,"\\'")+'\','+a.price+',\''+a.type+'\')">+ ADD</button></div>';
-      });
-      html+='</div></div>';
-    }
-    
-    adSec.innerHTML = html;
-  } catch(e) {
-    adSec.innerHTML = '';
+    setTimeout(loadUserSavedAddresses, 50);
+  }
+
+  cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+discountLine+gstLine+deliveryFeeLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div>' + offersHtml + '<div class="checkout-section">' + orderModePillsHtml + fulfillmentFieldsHtml + '<div class="input-group"><label>Special Instructions (optional)</label><textarea id="checkout-notes" placeholder="e.g. Extra spicy, no onions...">'+notesValue+'</textarea></div>'+submitBtn+'</div>';
+}
+
+// ===== DELIVERY & ADDRESS MANAGEMENT =====
+function selectOrderMode(mode) {
+  S.orderType = mode;
+
+  // Update Landing page cards
+  const cardDineIn = $('om-card-dinein');
+  const cardTakeaway = $('om-card-takeaway');
+  const cardDelivery = $('om-card-delivery');
+  if (cardDineIn) cardDineIn.classList.toggle('active', mode === 'DINE_IN');
+  if (cardTakeaway) cardTakeaway.classList.toggle('active', mode === 'TAKEAWAY');
+  if (cardDelivery) cardDelivery.classList.toggle('active', mode === 'DELIVERY');
+
+  // Update Cart pills if rendered
+  const pillDineIn = $('om-pill-dinein');
+  const pillTakeaway = $('om-pill-takeaway');
+  const pillDelivery = $('om-pill-delivery');
+  if (pillDineIn) pillDineIn.classList.toggle('active', mode === 'DINE_IN');
+  if (pillTakeaway) pillTakeaway.classList.toggle('active', mode === 'TAKEAWAY');
+  if (pillDelivery) pillDelivery.classList.toggle('active', mode === 'DELIVERY');
+
+  if (S.currentView === 'cart') {
+    renderCart();
   }
 }
 
-function addAddOnToCart(id,name,price,type){
-  const existing=S.cart.find(c=>c.id===id);
-  if(existing)existing.qty++;
-  else S.cart.push({id:id,name:name,price:price,qty:1,type:type,portion:'',isAddOn:true});
-  updateCartBadge();renderCart();showToast(name+' added','success');
+function setAdminOrderTypeFilter(type) {
+  S.adminOrderTypeFilter = type;
+  document.querySelectorAll('.admin-order-filter-pill').forEach(pill => {
+    pill.classList.toggle('active', pill.dataset.filter === type);
+  });
+  renderAdminOrders(S.adminOrders || []);
+}
+
+async function loadUserSavedAddresses() {
+  if (!S.user || !S.user.phone) return;
+  try {
+    const r = await callServer('getUserAddresses', S.user.phone);
+    if (r.success && Array.isArray(r.data)) {
+      S.savedAddresses = r.data;
+      renderSavedAddressesSelector();
+    }
+  } catch (e) {
+    console.error('Failed to load user addresses:', e);
+  }
+}
+
+function renderSavedAddressesSelector() {
+  const container = $('saved-addresses-container');
+  if (!container) return;
+
+  if (!S.savedAddresses || S.savedAddresses.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  let html = `
+    <div class="input-group">
+      <label>📍 Saved Addresses</label>
+      <div class="saved-addresses-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px; margin-bottom:12px;">
+  `;
+
+  S.savedAddresses.forEach(addr => {
+    const isSelected = S.selectedAddressId === addr.id;
+    html += `
+      <div class="address-card glass ${isSelected ? 'active' : ''}" style="padding:10px 12px; border:1px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}; border-radius:var(--radius-xs); cursor:pointer; position:relative;" onclick="selectSavedAddress('${addr.id}')">
+        <div style="font-weight:700; font-size:0.82rem; color:var(--text1); display:flex; justify-content:space-between; align-items:center;">
+          <span>${addr.label || 'Home'}</span>
+          <button class="btn btn-ghost btn-sm" style="padding:2px 4px; color:var(--error); font-size:0.7rem;" onclick="event.stopPropagation(); deleteUserSavedAddress('${addr.id}')">✕</button>
+        </div>
+        <div style="font-size:0.75rem; color:var(--text2); margin-top:4px; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${addr.address}</div>
+        ${addr.landmark ? `<div style="font-size:0.7rem; color:var(--text3); margin-top:2px;">🚩 ${addr.landmark}</div>` : ''}
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+
+function selectSavedAddress(addressId) {
+  const addr = (S.savedAddresses || []).find(a => a.id === addressId);
+  if (!addr) return;
+
+  S.selectedAddressId = addressId;
+  if ($('checkout-address')) $('checkout-address').value = addr.address;
+  if ($('checkout-landmark')) $('checkout-landmark').value = addr.landmark || '';
+  if (addr.lat) S.deliveryLat = addr.lat;
+  if (addr.lng) S.deliveryLng = addr.lng;
+
+  renderSavedAddressesSelector();
+  showToast('Selected address: ' + (addr.label || 'Saved address'), 'info');
+}
+
+async function saveCurrentAddress() {
+  if (!S.user || !S.user.phone) return showToast('Please login to save address', 'error');
+  const address = $('checkout-address') ? $('checkout-address').value.trim() : '';
+  const landmark = $('checkout-landmark') ? $('checkout-landmark').value.trim() : '';
+
+  if (!address) return showToast('Please enter an address first', 'error');
+
+  const label = prompt('Enter a label for this address (e.g. Home, Office, Friend):', 'Home');
+  if (!label) return;
+
+  showLoader('Saving address...');
+  try {
+    const r = await callServer('saveUserAddress', S.user.phone, {
+      label: label,
+      address: address,
+      landmark: landmark,
+      lat: S.deliveryLat || '',
+      lng: S.deliveryLng || ''
+    });
+    hideLoader();
+    if (r.success) {
+      showToast('Address saved to address book! 🏠', 'success');
+      loadUserSavedAddresses();
+    } else {
+      showToast(r.message || 'Failed to save address', 'error');
+    }
+  } catch (e) {
+    hideLoader();
+    showToast('Failed to save address', 'error');
+  }
+}
+
+async function deleteUserSavedAddress(addressId) {
+  if (!confirm('Are you sure you want to delete this saved address?')) return;
+  showLoader('Deleting address...');
+  try {
+    const r = await callServer('deleteUserAddress', S.user.phone, addressId);
+    hideLoader();
+    if (r.success) {
+      showToast('Address deleted', 'success');
+      if (S.selectedAddressId === addressId) S.selectedAddressId = null;
+      loadUserSavedAddresses();
+    } else {
+      showToast(r.message || 'Failed to delete address', 'error');
+    }
+  } catch (e) {
+    hideLoader();
+    showToast('Failed to delete address', 'error');
+  }
+}
+
+function getUserLocationGPS() {
+  if (!navigator.geolocation) {
+    showToast('Geolocation is not supported by your browser', 'error');
+    return;
+  }
+
+  showLoader('Detecting GPS location...');
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      hideLoader();
+      S.deliveryLat = position.coords.latitude;
+      S.deliveryLng = position.coords.longitude;
+
+      const locStr = `Lat: ${position.coords.latitude.toFixed(5)}, Lng: ${position.coords.longitude.toFixed(5)}`;
+      const addrInput = $('checkout-address');
+      if (addrInput && !addrInput.value) {
+        addrInput.value = `[GPS Location: ${locStr}]`;
+      }
+      showToast('📍 Location detected successfully!', 'success');
+    },
+    (err) => {
+      hideLoader();
+      console.error('GPS Location error:', err);
+      showToast('Could not fetch location. Please type your address manually.', 'warning');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+
+async function updateDeliveryStatus(orderId, newDeliveryStatus) {
+  showLoader('Updating delivery status...');
+  try {
+    const r = await callServer('updateDeliveryStatus', orderId, newDeliveryStatus);
+    hideLoader();
+    if (r.success) {
+      showToast('Delivery status updated to ' + newDeliveryStatus, 'success');
+      try { FirebaseSync.updateDeliveryStatus(orderId, newDeliveryStatus); } catch (e) {}
+      loadAdminData();
+    } else {
+      showToast(r.message || 'Failed to update delivery status', 'error');
+    }
+  } catch (e) {
+    hideLoader();
+    showToast('Failed to update delivery status', 'error');
+  }
 }
 
 async function submitOrder(){
@@ -925,8 +1081,17 @@ async function submitOrder(){
     showAuth('login');
     return;
   }
-  const table=$('checkout-table').value;
   if(!S.cart.length)return showToast('Cart is empty','error');
+
+  const orderType = S.orderType || 'DINE_IN';
+  const table = $('checkout-table') ? $('checkout-table').value : '';
+  const deliveryAddress = $('checkout-address') ? $('checkout-address').value.trim() : '';
+  const landmark = $('checkout-landmark') ? $('checkout-landmark').value.trim() : '';
+  const pickupTime = $('checkout-pickup-time') ? $('checkout-pickup-time').value : '';
+
+  if (orderType === 'DELIVERY' && !deliveryAddress) {
+    return showToast('Please enter your delivery address', 'error');
+  }
   
   showLoader('Checking order status...');
   try {
@@ -968,28 +1133,38 @@ async function submitOrder(){
   
   showLoader('Placing order...');
   const data={
-    tableNumber:table,
-    customerName:S.user.name,
-    customerPhone:S.user.phone,
-    items:S.cart.map(c=>({id:c.id,name:c.name + (c.portion ? ' (' + c.portion + ')' : ''),qty:c.qty,price:c.price})),
-    specialInstructions:$('checkout-notes')?$('checkout-notes').value:'',
+    orderType: orderType,
+    tableNumber: orderType === 'DINE_IN' ? table : '',
+    deliveryAddress: orderType === 'DELIVERY' ? deliveryAddress : '',
+    landmark: orderType === 'DELIVERY' ? landmark : '',
+    pickupTime: orderType === 'TAKEAWAY' ? pickupTime : '',
+    latitude: orderType === 'DELIVERY' && S.deliveryLat ? S.deliveryLat : '',
+    longitude: orderType === 'DELIVERY' && S.deliveryLng ? S.deliveryLng : '',
+    customerName: S.user.name,
+    customerPhone: S.user.phone,
+    items: S.cart.map(c=>({id:c.id,name:c.name + (c.portion ? ' (' + c.portion + ')' : ''),qty:c.qty,price:c.price})),
+    specialInstructions: $('checkout-notes')?$('checkout-notes').value:'',
     appliedOfferCode: S.appliedOffer ? S.appliedOffer.code : '',
     discountAmount: S.discountAmount || 0
   };
   try{
     const r=await callServer('placeOrder',data);hideLoader();
     if(r.success){
-      // Trigger background sync to write queued order to spreadsheet
       callServer('syncPendingOrders').catch(err => console.warn('Background sync failed:', err));
       
       S.currentOrder=r.data;
       
-      // Sync placed order to Firebase Realtime Database
       try {
         FirebaseSync.pushOrder({
           orderId: r.data.orderId,
+          orderType: r.data.orderType || data.orderType,
           status: 'Received',
           table: data.tableNumber,
+          deliveryAddress: data.deliveryAddress,
+          landmark: data.landmark,
+          pickupTime: data.pickupTime,
+          deliveryFee: r.data.deliveryFee || 0,
+          deliveryStatus: r.data.deliveryStatus || (data.orderType === 'DELIVERY' ? 'Pending' : ''),
           customerName: data.customerName,
           customerPhone: data.customerPhone,
           items: data.items,
@@ -1009,7 +1184,6 @@ async function submitOrder(){
       S.discountAmount=0;
       updateCartBadge();
       
-      // Check payment timing mode
       const isPostpaid = S.config && S.config.paymentTiming === 'postpaid';
       if (isPostpaid) {
         showToast('Order placed successfully! 🎉', 'success');
@@ -2765,33 +2939,64 @@ function filterAdminOrders() {
   renderAdminOrders(S.adminOrders || []);
 }
 
+function setAdminOrderTypeFilter(type) {
+  S.adminOrderTypeFilter = type;
+  document.querySelectorAll('.order-type-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-type') === type);
+  });
+  renderAdminOrders(S.adminOrders || []);
+}
+
 function renderAdminOrders(orders){
   const el=$('admin-orders-list');
+  if(!el) return;
   if(!orders || !orders.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">🎉</div><p>No active orders</p></div>';return}
   
   const query = $('admin-orders-search') ? $('admin-orders-search').value.toLowerCase().trim() : '';
+  const typeFilter = S.adminOrderTypeFilter || 'ALL';
+
   let filtered = orders;
+
+  if (typeFilter !== 'ALL') {
+    filtered = filtered.filter(o => {
+      const mode = (o.orderType || (o.table ? 'DINE_IN' : 'TAKEAWAY')).toUpperCase();
+      return mode === typeFilter;
+    });
+  }
+
   if(query){
-    filtered = orders.filter(o => 
+    filtered = filtered.filter(o => 
       o.orderId.toLowerCase().includes(query) ||
       (o.customerName || '').toLowerCase().includes(query) ||
       (o.customerPhone || '').toLowerCase().includes(query) ||
       (o.status || '').toLowerCase().includes(query) ||
       (o.paymentStatus || '').toLowerCase().includes(query) ||
+      (o.deliveryAddress || '').toLowerCase().includes(query) ||
       (o.table || 'takeaway').toString().toLowerCase().includes(query) ||
       (o.items || []).some(i => i.name.toLowerCase().includes(query))
     );
   }
 
   if(!filtered.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">🔍</div><p>No matching orders</p></div>';return}
+  
   el.innerHTML=filtered.map(o=>{
     const items=(o.items||[]).map(i=>i.name+' × '+i.qty).join(', ');
+    const orderType = (o.orderType || (o.table ? 'DINE_IN' : 'TAKEAWAY')).toUpperCase();
+    
+    let typeBadge = '';
+    if (orderType === 'DELIVERY') {
+      typeBadge = '<span class="status-badge" style="background:rgba(59,130,246,0.15);color:#3b82f6;border:1px solid rgba(59,130,246,0.3);margin-left:6px;font-weight:700">🛵 DELIVERY</span>';
+    } else if (orderType === 'TAKEAWAY') {
+      typeBadge = '<span class="status-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);margin-left:6px;font-weight:700">🛍️ TAKEAWAY</span>';
+    } else {
+      typeBadge = '<span class="status-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);margin-left:6px;font-weight:700">🍽️ DINE-IN</span>';
+    }
+
     let btns='';
     if(o.status==='Received')btns='<button class="btn btn-warning btn-sm" onclick="promptPreparingETA(\''+o.orderId+'\')">👨‍🍳 Start Preparing</button>';
     if(o.status==='Preparing')btns='<button class="btn btn-success btn-sm" onclick="updateStatus(\''+o.orderId+'\',\'Ready\')">✅ Mark Ready</button>';
     if(o.status==='Ready')btns='<button class="btn btn-secondary btn-sm" onclick="updateStatus(\''+o.orderId+'\',\'Completed\')">✔️ Complete</button>';
     
-    // Red delete button next to status button
     btns+=' <button class="btn btn-error btn-sm" style="background:var(--error);color:#fff" onclick="deleteAdminOrder(\''+o.orderId+'\')">🗑️ Delete</button>';
     
     const sc='status-'+o.status;
@@ -2805,9 +3010,46 @@ function renderAdminOrders(orders){
     } else {
       payBadge = '<span class="status-badge status-received" style="margin-left:8px;font-weight:700">⏳ UNPAID</span>';
     }
-    
-    return '<div class="admin-order '+sc+'"><div class="ao-top"><span class="ao-id">'+o.orderId+'</span><span class="ao-time">'+o.elapsed+'</span></div><div class="ao-meta"><span>📍 Table '+(o.table || 'Takeaway')+'</span><span>👤 '+o.customerName+(o.customerPhone ? ' | 📞 <a href="tel:'+o.customerPhone+'" style="color:inherit;text-decoration:none">'+o.customerPhone+'</a>' : '')+'</span><span class="status-badge '+sc.toLowerCase()+'">'+o.status+'</span>'+payBadge+'</div><div class="ao-items">'+items+'</div>'+(o.specialInstructions?'<div class="ao-instructions">📝 '+o.specialInstructions+'</div>':'')+'<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700;color:var(--primary)">₹'+o.total+'</span><div class="ao-actions">'+btns+'</div></div></div>'
+
+    let deliveryInfoHtml = '';
+    if (orderType === 'DELIVERY') {
+      const delStatus = o.deliveryStatus || 'Pending';
+      const mapLink = (o.deliveryLat && o.deliveryLng) ? `<a href="https://maps.google.com/?q=${o.deliveryLat},${o.deliveryLng}" target="_blank" style="color:var(--primary);margin-left:6px;text-decoration:none">📍 View Map</a>` : '';
+      deliveryInfoHtml = `
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius-xs);padding:8px 12px;margin:8px 0;font-size:0.8rem">
+          <div style="font-weight:600;color:var(--text1);margin-bottom:4px">🏠 Address: ${o.deliveryAddress || 'Not provided'}${o.deliveryLandmark ? ' (Landmark: ' + o.deliveryLandmark + ')' : ''}${mapLink}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <span style="color:var(--text2);font-weight:500">Delivery Status:</span>
+            <select class="delivery-status-select" onchange="updateDeliveryStatus('${o.orderId}', this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text1);font-size:0.75rem;font-weight:600">
+              <option value="Pending" ${delStatus === 'Pending' ? 'selected' : ''}>⏳ Pending</option>
+              <option value="Assigned" ${delStatus === 'Assigned' ? 'selected' : ''}>🛵 Assigned Rider</option>
+              <option value="Out for Delivery" ${delStatus === 'Out for Delivery' ? 'selected' : ''}>🚚 Out for Delivery</option>
+              <option value="Delivered" ${delStatus === 'Delivered' ? 'selected' : ''}>✅ Delivered</option>
+            </select>
+          </div>
+        </div>
+      `;
+    }
+
+    const locText = orderType === 'DELIVERY' ? '🛵 Delivery' : (orderType === 'TAKEAWAY' ? '🛍️ Takeaway' : '📍 Table ' + (o.table || '1'));
+
+    return '<div class="admin-order '+sc+'"><div class="ao-top"><span class="ao-id">'+o.orderId+'</span><span class="ao-time">'+o.elapsed+'</span></div><div class="ao-meta"><span>'+locText+'</span>'+typeBadge+'<span>👤 '+o.customerName+(o.customerPhone ? ' | 📞 <a href="tel:'+o.customerPhone+'" style="color:inherit;text-decoration:none">'+o.customerPhone+'</a>' : '')+'</span><span class="status-badge '+sc.toLowerCase()+'">'+o.status+'</span>'+payBadge+'</div>'+deliveryInfoHtml+'<div class="ao-items">'+items+'</div>'+(o.specialInstructions?'<div class="ao-instructions">📝 '+o.specialInstructions+'</div>':'')+'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span style="font-weight:700;color:var(--primary)">₹'+o.total+'</span><div class="ao-actions">'+btns+'</div></div></div>'
   }).join('')
+}
+
+async function updateDeliveryStatus(id, deliveryStatus) {
+  try {
+    const r = await callServer('updateDeliveryStatus', id, deliveryStatus);
+    if (r.success) {
+      showToast('Delivery status updated to ' + deliveryStatus, 'success');
+      try { FirebaseSync.updateDeliveryStatus(id, deliveryStatus); } catch(e) {}
+      loadAdminData();
+    } else {
+      showToast(r.message || 'Failed to update delivery status', 'error');
+    }
+  } catch(e) {
+    showToast('Failed to update delivery status', 'error');
+  }
 }
 
 function promptPreparingETA(orderId) {
@@ -3103,6 +3345,13 @@ async function loadAdminSettings(){
       $('cfg-gst-enabled').checked=d.gstEnabled===true;
       $('cfg-gst-rate').value=d.gstRate||5;
       $('cfg-gst-number').value=d.gstNumber||'';
+
+      if ($('cfg-dinein-enabled')) $('cfg-dinein-enabled').checked = d.dineInEnabled !== false;
+      if ($('cfg-takeaway-enabled')) $('cfg-takeaway-enabled').checked = d.takeawayEnabled !== false;
+      if ($('cfg-delivery-enabled')) $('cfg-delivery-enabled').checked = d.deliveryEnabled === true;
+      if ($('cfg-delivery-fee')) $('cfg-delivery-fee').value = d.flatDeliveryFee !== undefined ? d.flatDeliveryFee : 40;
+      if ($('cfg-free-delivery-threshold')) $('cfg-free-delivery-threshold').value = d.freeDeliveryThreshold !== undefined ? d.freeDeliveryThreshold : 500;
+
       const isStarter = S.subscriptionStatus && S.subscriptionStatus.isActive && S.subscriptionStatus.plan && S.subscriptionStatus.plan.toLowerCase().includes('starter');
       
       const rzpCheckbox = $('cfg-razorpay-enabled');
@@ -3182,7 +3431,12 @@ async function saveAdminSettings(){
     gstNumber:$('cfg-gst-number').value,
     razorpayEnabled:$('cfg-razorpay-enabled').checked,
     razorpayKeyId:$('cfg-razorpay-key-id').value,
-    paymentTiming:$('cfg-payment-timing').value||'prepaid'
+    paymentTiming:$('cfg-payment-timing').value||'prepaid',
+    dineInEnabled: $('cfg-dinein-enabled') ? $('cfg-dinein-enabled').checked : true,
+    takeawayEnabled: $('cfg-takeaway-enabled') ? $('cfg-takeaway-enabled').checked : true,
+    deliveryEnabled: $('cfg-delivery-enabled') ? $('cfg-delivery-enabled').checked : false,
+    flatDeliveryFee: parseFloat($('cfg-delivery-fee') ? $('cfg-delivery-fee').value : 40) || 0,
+    freeDeliveryThreshold: parseFloat($('cfg-free-delivery-threshold') ? $('cfg-free-delivery-threshold').value : 500) || 0
   };
   const secret=$('cfg-razorpay-key-secret').value;
   if(secret){
@@ -3206,6 +3460,11 @@ async function saveAdminSettings(){
       S.config.razorpayEnabled=data.razorpayEnabled;
       S.config.razorpayKeyId=data.razorpayKeyId;
       S.config.paymentTiming=data.paymentTiming;
+      S.config.dineInEnabled=data.dineInEnabled;
+      S.config.takeawayEnabled=data.takeawayEnabled;
+      S.config.deliveryEnabled=data.deliveryEnabled;
+      S.config.flatDeliveryFee=data.flatDeliveryFee;
+      S.config.freeDeliveryThreshold=data.freeDeliveryThreshold;
       document.title=data.restaurantName+' — Digital Menu';
       $('landing-name').textContent=data.restaurantName;
       if ($('admin-sidebar-restaurant-name')) $('admin-sidebar-restaurant-name').textContent = data.restaurantName;
