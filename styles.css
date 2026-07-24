@@ -6119,3 +6119,33 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   border-color: transparent;
   box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
 }
+
+/* ===== GPS LOCATION BADGE & DELIVERY CARD STYLING ===== */
+.gps-locked-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: gpsFadeInDown 0.3s ease-out;
+}
+
+.gps-locked-card:hover {
+  border-color: var(--success);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.15);
+}
+
+.delivery-tracking-card {
+  transition: all 0.3s ease;
+}
+
+.delivery-tracking-card:hover {
+  border-color: var(--primary);
+}
+
+@keyframes gpsFadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -926,20 +926,26 @@ function renderCart(){
       <div class="input-group">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
           <label style="margin:0;">Delivery Address <span style="color:var(--error)">*</span></label>
-          <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:0.75rem; color:var(--primary);" onclick="getUserLocationGPS()">📍 Use GPS Location</button>
+          <button type="button" class="btn btn-ghost btn-sm" style="padding:4px 10px; font-size:0.75rem; color:var(--primary); border:1px solid rgba(255,107,53,0.3); border-radius:6px; background:rgba(255,107,53,0.05);" onclick="getUserLocationGPS()">📍 Detect GPS Location</button>
         </div>
-        <textarea id="checkout-address" placeholder="Flat / House No., Building, Street Name..." style="min-height:70px;">${S.deliveryAddress || ''}</textarea>
+        <div id="gps-location-card-container"></div>
+        <textarea id="checkout-address" placeholder="Flat / House No., Building, Street Name..." style="min-height:70px;" oninput="S.deliveryAddress=this.value">${S.deliveryAddress || ''}</textarea>
       </div>
       <div class="input-group">
-        <label>Landmark (optional)</label>
-        <input type="text" id="checkout-landmark" placeholder="e.g. Near HDFC Bank, Opposite Park" value="${S.deliveryLandmark || ''}">
+        <label>Landmark / Nearby Area (optional)</label>
+        <input type="text" id="checkout-landmark" placeholder="e.g. Near HDFC Bank, Opposite Park" value="${S.deliveryLandmark || ''}" oninput="S.deliveryLandmark=this.value">
       </div>
       <div style="margin-bottom:16px;">
-        <button type="button" class="btn btn-secondary btn-sm" style="width:100%; font-size:0.8rem;" onclick="saveCurrentAddress()">💾 Save this Address for Future</button>
+        <button type="button" class="btn btn-secondary btn-sm" style="width:100%; font-size:0.8rem;" onclick="saveCurrentAddress()">💾 Save this Address to Address Book</button>
       </div>
     `;
 
-    setTimeout(loadUserSavedAddresses, 50);
+    setTimeout(() => {
+      loadUserSavedAddresses();
+      if (S.deliveryLat && S.deliveryLng) {
+        renderGpsLocationCard(S.deliveryLat, S.deliveryLng, S.deliveryAccuracy);
+      }
+    }, 50);
   }
 
   cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+discountLine+gstLine+deliveryFeeLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div>' + offersHtml + '<div class="checkout-section">' + orderModePillsHtml + fulfillmentFieldsHtml + '<div class="input-group"><label>Special Instructions (optional)</label><textarea id="checkout-notes" placeholder="e.g. Extra spicy, no onions...">'+notesValue+'</textarea></div>'+submitBtn+'</div>';
@@ -1093,23 +1099,70 @@ async function deleteUserSavedAddress(addressId) {
   }
 }
 
+function renderGpsLocationCard(lat, lng, accuracy) {
+  const container = $('gps-location-card-container');
+  if (!container) return;
+
+  if (!lat || !lng) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const accuracyText = accuracy ? ` (Accurate within ±${accuracy}m)` : '';
+  const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
+
+  container.innerHTML = `
+    <div class="gps-locked-card glass" style="padding:10px 12px; border:1px solid rgba(16,185,129,0.3); background:rgba(16,185,129,0.06); border-radius:var(--radius-xs); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; box-shadow:var(--shadow-sm);">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div style="font-size:1.3rem; background:rgba(16,185,129,0.15); width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center;">📍</div>
+        <div>
+          <div style="font-size:0.8rem; font-weight:700; color:var(--success); display:flex; align-items:center; gap:6px;">
+            <span>Exact GPS Address Locked</span>
+            <span style="font-size:0.65rem; background:var(--success); color:#fff; padding:1px 6px; border-radius:10px; font-weight:600;">ACTIVE</span>
+          </div>
+          <div style="font-size:0.72rem; color:var(--text2); margin-top:2px;">
+            Coords: <strong>${lat.toFixed(5)}, ${lng.toFixed(5)}</strong>${accuracyText}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <a href="${mapsUrl}" target="_blank" class="btn btn-ghost btn-sm" style="padding:3px 8px; font-size:0.75rem; color:var(--primary); text-decoration:none; border:1px solid rgba(255,107,53,0.3); border-radius:6px; background:rgba(255,107,53,0.05); font-weight:600;">🗺️ View Map</a>
+        <button type="button" class="btn btn-ghost btn-sm" style="padding:3px 6px; font-size:0.75rem; color:var(--text2);" onclick="getUserLocationGPS()" title="Re-sync GPS location">🔄</button>
+      </div>
+    </div>
+  `;
+}
+
 function getUserLocationGPS() {
   if (!navigator.geolocation) {
     showToast('Geolocation is not supported by your browser', 'error');
     return;
   }
 
-  showLoader('Detecting exact GPS location & address...');
+  showLoader('📡 Detecting exact GPS coordinates...');
+
+  const options = {
+    enableHighAccuracy: true,
+    timeout: 15000,
+    maximumAge: 0
+  };
+
   navigator.geolocation.getCurrentPosition(
     async (position) => {
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
+      const accuracy = position.coords.accuracy ? Math.round(position.coords.accuracy) : null;
+
       S.deliveryLat = lat;
       S.deliveryLng = lng;
+      S.deliveryAccuracy = accuracy;
+
+      showLoader('📍 Resolving exact street address from GPS...');
 
       let formattedAddress = '';
+      let detectedLandmark = '';
 
-      // Primary Service: High-precision OpenStreetMap Nominatim with zoom=18 & address details
+      // Primary Service: High-precision OpenStreetMap Nominatim API (zoom=18)
       try {
         const osmRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
           headers: { 'Accept-Language': 'en' }
@@ -1117,24 +1170,32 @@ function getUserLocationGPS() {
         if (osmRes.ok) {
           const osmData = await osmRes.json();
           if (osmData && osmData.address) {
-            const addr = osmData.address;
-            const parts = [];
-            
-            const placeName = addr.building || addr.house_number || addr.amenity || addr.shop || '';
-            const street = addr.road || addr.pedestrian || addr.footway || '';
-            const area = addr.suburb || addr.neighbourhood || addr.residential || addr.subdistrict || '';
-            const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
-            const state = addr.state || '';
-            const postcode = addr.postcode || '';
+            const a = osmData.address;
 
-            if (placeName) parts.push(placeName);
-            if (street) parts.push(street);
-            if (area) parts.push(area);
-            if (city) parts.push(city);
-            if (state) parts.push(state + (postcode ? ` - ${postcode}` : ''));
+            const house = a.house_number || a.building || a.office || a.amenity || a.shop || a.commercial || a.industrial || '';
+            const road = a.road || a.pedestrian || a.footway || a.street || a.path || '';
+            const area = a.suburb || a.neighbourhood || a.residential || a.subdistrict || a.quarter || a.locality || a.city_district || '';
+            const city = a.city || a.town || a.village || a.municipality || a.county || a.district || '';
+            const state = a.state || a.state_district || '';
+            const postcode = a.postcode || '';
 
-            if (parts.length > 0) {
-              formattedAddress = parts.join(', ');
+            const line1Parts = [];
+            if (house) line1Parts.push(house);
+            if (road) line1Parts.push(road);
+
+            const line2Parts = [];
+            if (area) {
+              line2Parts.push(area);
+              detectedLandmark = area;
+            }
+
+            const line3Parts = [];
+            if (city) line3Parts.push(city);
+            if (state) line3Parts.push(state + (postcode ? ` - ${postcode}` : ''));
+
+            const allParts = [...line1Parts, ...line2Parts, ...line3Parts];
+            if (allParts.length > 0) {
+              formattedAddress = allParts.join(', ');
             } else if (osmData.display_name) {
               formattedAddress = osmData.display_name;
             }
@@ -1144,14 +1205,45 @@ function getUserLocationGPS() {
         console.warn('OSM Geocode error:', e);
       }
 
-      // Secondary Fallback Service: BigDataCloud Reverse Geocode Client API
+      // Secondary Geocoding Engine: Photon API (Komoot OSM)
+      if (!formattedAddress) {
+        try {
+          const photonRes = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`);
+          if (photonRes.ok) {
+            const photonData = await photonRes.json();
+            if (photonData && photonData.features && photonData.features.length > 0) {
+              const props = photonData.features[0].properties || {};
+              const parts = [];
+              if (props.housenumber) parts.push(props.housenumber);
+              if (props.street || props.name) parts.push(props.street || props.name);
+              if (props.district || props.suburb || props.locality) {
+                parts.push(props.district || props.suburb || props.locality);
+                if (!detectedLandmark) detectedLandmark = props.district || props.suburb || props.locality;
+              }
+              if (props.city) parts.push(props.city);
+              if (props.state) parts.push(props.state + (props.postcode ? ` - ${props.postcode}` : ''));
+
+              if (parts.length > 0) {
+                formattedAddress = parts.join(', ');
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Photon Geocode error:', e);
+        }
+      }
+
+      // Tertiary Geocoding Engine: BigDataCloud Reverse Geocode Client API
       if (!formattedAddress) {
         try {
           const bdcRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
           if (bdcRes.ok) {
             const bdcData = await bdcRes.json();
             const parts = [];
-            if (bdcData.locality) parts.push(bdcData.locality);
+            if (bdcData.locality) {
+              parts.push(bdcData.locality);
+              if (!detectedLandmark) detectedLandmark = bdcData.locality;
+            }
             if (bdcData.city) parts.push(bdcData.city);
             if (bdcData.principalSubdivision) parts.push(bdcData.principalSubdivision);
             if (bdcData.postcode) parts.push(bdcData.postcode);
@@ -1165,25 +1257,38 @@ function getUserLocationGPS() {
         }
       }
 
-      // Final fallback if both APIs fail
+      // Final fallback if reverse geocoding endpoints fail
       if (!formattedAddress) {
-        formattedAddress = `Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+        formattedAddress = `Location (${lat.toFixed(6)}, ${lng.toFixed(6)})`;
       }
 
       hideLoader();
+
       const addrInput = $('checkout-address');
       if (addrInput) {
         addrInput.value = formattedAddress;
         S.deliveryAddress = formattedAddress;
       }
+
+      const landmarkInput = $('checkout-landmark');
+      if (landmarkInput && !landmarkInput.value.trim() && detectedLandmark) {
+        landmarkInput.value = detectedLandmark;
+        S.deliveryLandmark = detectedLandmark;
+      }
+
+      renderGpsLocationCard(lat, lng, accuracy);
       showToast('📍 Exact GPS address detected!', 'success');
     },
     (err) => {
       hideLoader();
       console.error('GPS Location error:', err);
-      showToast('Could not fetch location. Please type your address manually.', 'warning');
+      let errMsg = 'Could not fetch GPS location. Please type your address manually.';
+      if (err.code === 1) errMsg = 'Location permission denied. Please allow location access in browser settings.';
+      else if (err.code === 2) errMsg = 'GPS signal unavailable. Please enter address manually.';
+      else if (err.code === 3) errMsg = 'GPS location request timed out. Please try again.';
+      showToast(errMsg, 'warning');
     },
-    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    options
   );
 }
 
@@ -1401,7 +1506,14 @@ function updateTrackingUI(data){
   }
 
   $('track-order-id').textContent=data.orderId;
-  $('track-table').textContent=data.table ? 'Table '+data.table : 'Takeaway';
+
+  const orderType = data.orderType || (data.table ? 'DINE_IN' : 'TAKEAWAY');
+  let typeLabel = '';
+  if (orderType === 'DELIVERY') typeLabel = '🛵 Home Delivery';
+  else if (orderType === 'TAKEAWAY') typeLabel = '🛍️ Takeaway';
+  else typeLabel = '🍽️ Table ' + (data.table || '1');
+  $('track-table').textContent = typeLabel;
+
   $('track-time').textContent=data.timestamp;
   const steps=['Received','Preparing','Ready','Completed'];
   const idx=steps.indexOf(data.status);
@@ -1412,7 +1524,30 @@ function updateTrackingUI(data){
     if(i<idx)s.classList.add('completed');
     else if(i===idx)s.classList.add('active')
   });
-  let html='<h3>Order Details</h3>';
+
+  let html = '';
+  if (orderType === 'DELIVERY' && (data.deliveryAddress || data.landmark)) {
+    const lat = data.latitude || data.deliveryLat;
+    const lng = data.longitude || data.deliveryLng;
+    const mapBtnHtml = (lat && lng) ? 
+      `<a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" class="btn btn-ghost btn-sm" style="display:inline-flex; align-items:center; gap:4px; margin-top:8px; padding:4px 10px; font-size:0.75rem; color:var(--primary); border:1px solid rgba(255,107,53,0.3); text-decoration:none; border-radius:6px; background:rgba(255,107,53,0.05); font-weight:600;">🗺️ View GPS Location in Google Maps</a>` : '';
+
+    html += `
+      <div class="delivery-tracking-card glass" style="padding:12px 14px; border:1px solid var(--border); border-radius:var(--radius-xs); margin-bottom:16px; background:rgba(255,255,255,0.02);">
+        <div style="font-weight:700; font-size:0.85rem; color:var(--text1); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+          <span>🛵 Delivery Details</span>
+          <span class="status-badge" style="background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3); font-weight:700;">${data.deliveryStatus || 'Pending'}</span>
+        </div>
+        <div style="font-size:0.8rem; color:var(--text2); line-height:1.4;">
+          <strong>🏠 Address:</strong> ${data.deliveryAddress || 'Address registered'}
+        </div>
+        ${data.landmark ? `<div style="font-size:0.78rem; color:var(--text3); margin-top:4px;"><strong>🚩 Landmark:</strong> ${data.landmark}</div>` : ''}
+        ${mapBtnHtml}
+      </div>
+    `;
+  }
+
+  html += '<h3>Order Details</h3>';
   (data.items||[]).forEach(it=>{html+='<div class="tracking-item"><span>'+it.name+' × '+it.qty+'</span><span>₹'+(it.price*it.qty)+'</span></div>'});
   if (data.discountAmount > 0) {
     html += '<div class="tracking-item" style="color:var(--success); border-top: 1px dashed var(--border); padding-top: 8px;"><span>🏷️ Discount (' + (data.appliedOffer || 'Coupon') + ')</span><span>-₹' + data.discountAmount.toFixed(2) + '</span></div>';
@@ -1882,7 +2017,18 @@ function renderMyOrders(){
     const trackBtn = o.status!=='Completed'?'<button class="btn btn-primary btn-sm" onclick="S.currentOrder={orderId:\''+o.orderId+'\'};navigateTo(\'tracking\');startTracking(\''+o.orderId+'\')">Track Order</button>':'';
     const reorderBtn = '<button class="btn btn-secondary btn-sm" onclick="reorder(\''+encodeURIComponent(JSON.stringify(o.items))+'\')">🔁 Re-Order</button>';
     const receiptBtn = o.status==='Completed'?'<button class="btn btn-success btn-sm" style="background:var(--success);color:#fff;border:none" onclick="downloadReceipt(\''+o.orderId+'\')">🧾 Receipt</button>':'';
-    return '<div class="order-history-item"><div class="oh-header"><span class="oh-id">'+o.orderId+'</span><span class="status-badge '+sc+'">'+o.status+'</span></div><div class="oh-details"><div>🕐 '+o.timestamp+'</div><div>📍 Table '+o.table+'</div><div>🍽️ '+items+'</div><div style="font-weight:600;margin-top:4px">Total: ₹'+o.total+'</div></div><div style="display:flex;gap:8px;margin-top:8px">'+trackBtn+reorderBtn+receiptBtn+'</div></div>'
+
+    const oType = o.orderType || (o.table ? 'DINE_IN' : 'TAKEAWAY');
+    let locLabel = '📍 Table ' + (o.table || '1');
+    if (oType === 'DELIVERY') locLabel = '🛵 Home Delivery';
+    else if (oType === 'TAKEAWAY') locLabel = '🛍️ Takeaway';
+
+    let addressHtml = '';
+    if (oType === 'DELIVERY' && o.deliveryAddress) {
+      addressHtml = `<div style="font-size:0.75rem;color:var(--text2);margin-top:2px;">🏠 ${o.deliveryAddress}${o.landmark ? ' (🚩 Landmark: ' + o.landmark + ')' : ''}</div>`;
+    }
+
+    return '<div class="order-history-item"><div class="oh-header"><span class="oh-id">'+o.orderId+'</span><span class="status-badge '+sc+'">'+o.status+'</span></div><div class="oh-details"><div>🕐 '+o.timestamp+'</div><div>'+locLabel+'</div>'+addressHtml+'<div>🍽️ '+items+'</div><div style="font-weight:600;margin-top:4px">Total: ₹'+o.total+'</div></div><div style="display:flex;gap:8px;margin-top:8px">'+trackBtn+reorderBtn+receiptBtn+'</div></div>'
   }).join('')
 }
 
@@ -3144,11 +3290,16 @@ function renderAdminOrders(orders){
     let deliveryInfoHtml = '';
     if (orderType === 'DELIVERY') {
       const delStatus = o.deliveryStatus || 'Pending';
-      const mapLink = (o.deliveryLat && o.deliveryLng) ? `<a href="https://maps.google.com/?q=${o.deliveryLat},${o.deliveryLng}" target="_blank" style="color:var(--primary);margin-left:6px;text-decoration:none">📍 View Map</a>` : '';
+      const lat = o.latitude || o.deliveryLat;
+      const lng = o.longitude || o.deliveryLng;
+      const landmarkText = o.landmark || o.deliveryLandmark;
+      const mapBtn = (lat && lng) ? `<a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,107,53,0.12);color:var(--primary);padding:4px 10px;border-radius:6px;font-size:0.75rem;font-weight:700;text-decoration:none;border:1px solid rgba(255,107,53,0.3);margin-top:6px">📍 Open Navigation in Maps</a>` : '';
+
       deliveryInfoHtml = `
-        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius-xs);padding:8px 12px;margin:8px 0;font-size:0.8rem">
-          <div style="font-weight:600;color:var(--text1);margin-bottom:4px">🏠 Address: ${o.deliveryAddress || 'Not provided'}${o.deliveryLandmark ? ' (Landmark: ' + o.deliveryLandmark + ')' : ''}${mapLink}</div>
-          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius-xs);padding:10px 12px;margin:8px 0;font-size:0.8rem">
+          <div style="font-weight:600;color:var(--text1);margin-bottom:4px">🏠 Address: ${o.deliveryAddress || 'Not provided'}${landmarkText ? ' (🚩 Landmark: ' + landmarkText + ')' : ''}</div>
+          ${mapBtn ? '<div>' + mapBtn + '</div>' : ''}
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
             <span style="color:var(--text2);font-weight:500">Delivery Status:</span>
             <select class="delivery-status-select" onchange="updateDeliveryStatus('${o.orderId}', this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text1);font-size:0.75rem;font-weight:600">
               <option value="Pending" ${delStatus === 'Pending' ? 'selected' : ''}>⏳ Pending</option>
