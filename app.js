@@ -1085,23 +1085,34 @@ function renderCart(){
     '<button class="btn btn-primary btn-block" onclick="submitOrder()">🚀 Place Order — ₹'+grandTotal.toFixed(2)+'</button>';
 
   // Order mode selector pills
-  const isStarterCart = isStarterPlan();
-  if (S.orderType === 'DELIVERY' && (isStarterCart || (S.config && S.config.deliveryEnabled === false))) {
+  if (S.orderType === 'DELIVERY' && (!S.config || S.config.deliveryEnabled !== true)) {
     S.orderType = 'DINE_IN';
   }
 
   const dineInActive = (S.orderType === 'DINE_IN' || !S.orderType) ? 'active' : '';
   const takeawayActive = S.orderType === 'TAKEAWAY' ? 'active' : '';
   const deliveryActive = S.orderType === 'DELIVERY' ? 'active' : '';
-  const deliveryDisabledAttr = (isStarterCart || (S.config && S.config.deliveryEnabled === false)) ? 'style="opacity: 0.5; cursor: not-allowed;" title="' + (isStarterCart ? '🔒 Upgrade to Growth/Premium plan for Home Delivery' : 'Disabled by restaurant') + '"' : '';
+
+  const showDineIn = !S.config || S.config.dineInEnabled !== false;
+  const showTakeaway = !S.config || S.config.takeawayEnabled !== false;
+  const showDelivery = S.config && S.config.deliveryEnabled === true;
+
+  let pillsListHtml = '';
+  if (showDineIn) {
+    pillsListHtml += `<button type="button" class="order-type-pill ${dineInActive}" id="om-pill-dinein" onclick="selectOrderMode('DINE_IN')">🍽️ Dine-In</button>`;
+  }
+  if (showTakeaway) {
+    pillsListHtml += `<button type="button" class="order-type-pill ${takeawayActive}" id="om-pill-takeaway" onclick="selectOrderMode('TAKEAWAY')">🛍️ Takeaway</button>`;
+  }
+  if (showDelivery) {
+    pillsListHtml += `<button type="button" class="order-type-pill ${deliveryActive}" id="om-pill-delivery" onclick="selectOrderMode('DELIVERY')">🛵 Home Delivery</button>`;
+  }
 
   const orderModePillsHtml = `
     <div class="input-group" style="margin-bottom:16px;">
       <label>Choose Fulfillment Mode</label>
       <div class="order-type-pills">
-        <button type="button" class="order-type-pill ${dineInActive}" id="om-pill-dinein" onclick="selectOrderMode('DINE_IN')">🍽️ Dine-In</button>
-        <button type="button" class="order-type-pill ${takeawayActive}" id="om-pill-takeaway" onclick="selectOrderMode('TAKEAWAY')">🛍️ Takeaway</button>
-        <button type="button" class="order-type-pill ${deliveryActive}" id="om-pill-delivery" ${deliveryDisabledAttr} onclick="selectOrderMode('DELIVERY')">🛵 Home Delivery ${isStarterCart ? '🔒' : ''}</button>
+        ${pillsListHtml}
       </div>
     </div>
   `;
@@ -1165,18 +1176,21 @@ function isStarterPlan() {
   return !!(S.subscriptionStatus && S.subscriptionStatus.isActive && S.subscriptionStatus.plan && S.subscriptionStatus.plan.toLowerCase().includes('starter'));
 }
 
+function updateLandingOrderModeCards() {
+  const config = S.config || {};
+  const cardDineIn = $('om-card-dinein');
+  const cardTakeaway = $('om-card-takeaway');
+  const cardDelivery = $('om-card-delivery');
+  
+  if (cardDineIn) cardDineIn.style.display = config.dineInEnabled !== false ? '' : 'none';
+  if (cardTakeaway) cardTakeaway.style.display = config.takeawayEnabled !== false ? '' : 'none';
+  if (cardDelivery) cardDelivery.style.display = config.deliveryEnabled === true ? '' : 'none';
+}
+
 // ===== DELIVERY & ADDRESS MANAGEMENT =====
 function selectOrderMode(mode) {
-  const isStarter = isStarterPlan();
-  if (mode === 'DELIVERY') {
-    if (isStarter) {
-      showToast('Home Delivery is not available on the Starter plan (₹499). Please upgrade to Growth or Premium plan.', 'warning');
-      return;
-    }
-    if (S.config && S.config.deliveryEnabled === false) {
-      showToast('Home delivery is currently disabled by the restaurant.', 'info');
-      return;
-    }
+  if (mode === 'DELIVERY' && (!S.config || S.config.deliveryEnabled !== true)) {
+    return;
   }
 
   S.orderType = mode;
@@ -5461,6 +5475,8 @@ function applyBootstrapData(d) {
   
   const config = S.config || {};
   
+  updateLandingOrderModeCards();
+
   // White-label branding
   const rName = config.restaurantName || 'MenuSarthi';
   if ($('admin-sidebar-restaurant-name')) $('admin-sidebar-restaurant-name').textContent = rName;
