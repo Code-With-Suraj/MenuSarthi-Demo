@@ -6,6 +6,9 @@ const FirebaseSync = {
   db: null,
   orderListener: null,
   liveOrdersListener: null,
+  _liveListenerSheetId: null, // tracks which spreadsheetId the live listener was bound to
+  _orderListenerSheetId: null,
+  _orderListenerOrderId: null,
   initialized: false,
 
   async init() {
@@ -243,27 +246,36 @@ const FirebaseSync = {
     this.stopListeningToLiveOrders();
 
     const currentUser = firebase.auth().currentUser;
-    const currentSheetId = (CONFIG.SPREADSHEET_ID || "default").toString().toLowerCase().trim();
+    const boundSheetId = (CONFIG.SPREADSHEET_ID || "default").toString().toLowerCase().trim();
+    this._liveListenerSheetId = boundSheetId;
 
-    console.log("FirebaseSync: Subscribing to live orders. Current Auth state:", {
+    console.log("FirebaseSync: Subscribing to live orders. Bound to spreadsheetId:", boundSheetId, "Auth:", {
       uid: currentUser ? currentUser.uid : null,
-      email: currentUser ? currentUser.email : null,
-      spreadsheetId: currentSheetId
+      email: currentUser ? currentUser.email : null
     });
 
     this.liveOrdersListener = ordersRef.on('value', (snapshot) => {
+      // GUARD: If CONFIG.SPREADSHEET_ID changed since this listener was created,
+      // this listener is stale (subscribed to the wrong path). Detach silently.
+      const nowSheetId = (CONFIG.SPREADSHEET_ID || "default").toString().toLowerCase().trim();
+      if (nowSheetId !== this._liveListenerSheetId) {
+        console.warn(`FirebaseSync: Stale live-orders listener detected (bound: ${this._liveListenerSheetId}, current: ${nowSheetId}). Ignoring event.`);
+        return;
+      }
+
       const val = snapshot.val();
       if (!val) {
         callback(null);
         return;
       }
-      // Strict multi-tenant isolation: filter out any order belonging to a different spreadsheetId
+      // Strict multi-tenant isolation: ONLY pass orders that explicitly match our spreadsheetId.
+      // Orders with missing spreadsheetId are REJECTED (not defaulted) to prevent cross-tenant leaks.
       const isolatedOrders = {};
       Object.keys(val).forEach(key => {
         const order = val[key];
-        if (order) {
-          const orderSheetId = (order.spreadsheetId || currentSheetId).toString().toLowerCase().trim();
-          if (orderSheetId === currentSheetId) {
+        if (order && order.spreadsheetId) {
+          const orderSheetId = order.spreadsheetId.toString().toLowerCase().trim();
+          if (orderSheetId === boundSheetId) {
             isolatedOrders[key] = order;
           }
         }
@@ -276,11 +288,14 @@ const FirebaseSync = {
 
   stopListeningToLiveOrders() {
     if (this.liveOrdersListener && this.db) {
-      const ordersRef = this.getOrdersRef();
-      if (ordersRef) {
-        ordersRef.off('value', this.liveOrdersListener);
+      // Detach using the path that was active when the listener was created
+      const sheetId = this._liveListenerSheetId || (CONFIG.SPREADSHEET_ID || "default").toString().toLowerCase().trim();
+      const ref = this.db.ref(`restaurants/${sheetId}/orders`);
+      if (ref) {
+        ref.off('value', this.liveOrdersListener);
       }
       this.liveOrdersListener = null;
+      this._liveListenerSheetId = null;
     }
   }
 };

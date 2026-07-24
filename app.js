@@ -2663,6 +2663,7 @@ async function handleAdminLogin(){
       showLoader('Authenticating real-time sync...');
       try {
         await FirebaseSync.loginAdmin();
+        S.firebaseAdminReady = true;
       } catch(e) {
         console.error("Firebase admin login error:", e);
       }
@@ -3664,9 +3665,9 @@ function startAdminRefresh() {
       
       const currentSheetId = (CONFIG.SPREADSHEET_ID || "default").toString().toLowerCase().trim();
 
-      // Filter out completed ones & ensure spreadsheetId matches current client
+      // Filter out completed ones & ensure spreadsheetId strictly matches current client
       const liveOrders = Object.values(allOrders)
-        .filter(o => o.status && o.status !== 'Completed' && (!o.spreadsheetId || o.spreadsheetId.toString().toLowerCase().trim() === currentSheetId))
+        .filter(o => o.status && o.status !== 'Completed' && o.spreadsheetId && o.spreadsheetId.toString().toLowerCase().trim() === currentSheetId)
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
       // Sound alert for new incoming orders
@@ -5474,7 +5475,7 @@ function applyBootstrapData(d) {
     }
   } else {
     // Active subscription
-    if (S.isAdmin) {
+    if (S.isAdmin && S.firebaseAdminReady) {
       loadAdminData();
       startAdminRefresh();
       renderSubscriptionBanner();
@@ -5491,15 +5492,10 @@ async function init(){
     verifyUserSessionFromServer(S.user.phone);
   }
   
-  // Restore admin session - await Firebase authentication before loading view
+  // Restore admin session flag (but do NOT authenticate Firebase yet — wait for SPREADSHEET_ID sync)
   let adminSessionActive = loadAdminSession();
   if(adminSessionActive){
     S.isAdmin=true;
-    try {
-      await FirebaseSync.loginAdmin();
-    } catch(e) {
-      console.error("Firebase admin restore error:", e);
-    }
     hide('admin-login-screen');
     show('admin-dashboard');
   }
@@ -5537,6 +5533,20 @@ async function init(){
     }
   } finally {
     if (!cached) hideLoader();
+  }
+  
+  // NOW authenticate Firebase admin AFTER SPREADSHEET_ID is guaranteed synced from backend.
+  // This prevents the race condition where Firebase listeners bind to the wrong restaurant path.
+  if(adminSessionActive){
+    try {
+      await FirebaseSync.loginAdmin();
+      S.firebaseAdminReady = true;
+    } catch(e) {
+      console.error("Firebase admin restore error:", e);
+    }
+    // Start admin listeners only after authentication with the correct SPREADSHEET_ID
+    startAdminRefresh();
+    renderSubscriptionBanner();
   }
   
   if(INIT_PAGE==='admin'){navigateTo('admin');return}
