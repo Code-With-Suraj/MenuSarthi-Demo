@@ -1,9 +1,10 @@
 const CONFIG = {
   // Replace this with your Google Apps Script Web App Deployment URL
   // Example: "https://script.google.com/macros/s/.../exec"
-  GAS_API_URL: "https://script.google.com/macros/s/AKfycbxXqD6vwBSLFZkj-wJcyIrpPkX42QVHrUdi2rooafbv-l3tE11j6Qoer6Ls5MtLaUFuag/exec",
+  GAS_API_URL: "https://script.google.com/macros/s/AKfycby7iJfXyvVleL_gp_mgNfetPDs2iyet5EZe4RJYMd_jVxPYtxdzFVy6Hhc_yZ6IoHnTHQ/exec",
 
-  // The Google Spreadsheet ID of this restaurant's database (used as a namespace for Firebase isolation)
+  // The Google Spreadsheet ID of this restaurant's database (used as a namespace for Firebase multi-tenant isolation).
+  // Note: MenuSarthi automatically syncs & overrides this from the GAS backend at launch if different.
   SPREADSHEET_ID: "1xoIKKpW_QJ__2X30_NXEPqrJxAEqW9gWvSXki2dAnx0",
 
   REQUEST_TIMEOUT: 30000,

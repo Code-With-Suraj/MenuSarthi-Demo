@@ -304,8 +304,15 @@ function navigateTo(view){
   $('bottom-nav').style.display=showNav?'flex':'none';
   const showFab=view==='menu'&&S.cart.length>0;
   $('cart-fab').classList.toggle('hidden',!showFab);
-  if(view==='menu' && Object.keys(S.menu || {}).length === 0)loadMenu();
-  if(view==='cart')renderCart();
+  if(view==='menu') {
+    if(Object.keys(S.menu || {}).length === 0) loadMenu();
+    renderMenuOffersCarousel();
+    renderSmartOfferProgressBar();
+  }
+  if(view==='cart') {
+    renderCart();
+    renderSmartOfferProgressBar();
+  }
   if(view==='orders')loadMyOrders();
   if(view==='admin')$('bottom-nav').style.display='none';
   if(view==='maintenance')$('bottom-nav').style.display='none';
@@ -621,6 +628,180 @@ function addAddOnToCart(id, name, price, type) {
   showToast(name + ' added to cart! 🧩', 'success');
 }
 
+// ===== SMART AOV BOOSTERS & PROGRESS BAR =====
+function renderSmartOfferProgressBar() {
+  const menuContainer = $('menu-cart-booster-container');
+  const cartContainer = $('cart-smart-booster-container');
+
+  const subtotal = (S.cart || []).reduce((s, c) => s + (c.price || 0) * (c.qty || 1), 0);
+
+  if (subtotal === 0) {
+    if (menuContainer) menuContainer.innerHTML = '';
+    if (cartContainer) cartContainer.innerHTML = '';
+    return;
+  }
+
+  // 1. Calculate Free Delivery Target
+  const isDelivery = S.orderType === 'DELIVERY';
+  const freeDelThreshold = (S.config && S.config.freeDeliveryThreshold !== undefined) ? parseFloat(S.config.freeDeliveryThreshold) : 500;
+  const needsFreeDel = isDelivery && freeDelThreshold > 0 && subtotal < freeDelThreshold;
+  const delDiff = needsFreeDel ? freeDelThreshold - subtotal : 0;
+
+  // 2. Calculate Active Offer Targets
+  const activeOffers = (S.offers || []).filter(o => o.isActive);
+  let nextOffer = null;
+  let offerDiff = Infinity;
+
+  activeOffers.forEach(o => {
+    if (subtotal < o.minOrderValue) {
+      const diff = o.minOrderValue - subtotal;
+      if (diff < offerDiff) {
+        offerDiff = diff;
+        nextOffer = o;
+      }
+    }
+  });
+
+  // Determine Goal Strategy
+  let targetVal = 0;
+  let goalTitle = '';
+  let goalBadge = '';
+  let diffAmt = 0;
+  let isUnlocked = false;
+
+  if (nextOffer && (offerDiff <= delDiff || !needsFreeDel)) {
+    targetVal = nextOffer.minOrderValue;
+    diffAmt = offerDiff;
+    let label = '';
+    if (nextOffer.type === 'discount_percent') label = `${nextOffer.value}% OFF`;
+    else if (nextOffer.type === 'discount_flat') label = `₹${nextOffer.value} OFF`;
+    else label = `FREE DISH`;
+    goalTitle = `Add <strong>₹${Math.ceil(diffAmt)}</strong> more to unlock <strong>${label}</strong> (${nextOffer.code})! 🎉`;
+    goalBadge = `🏷️ Coupon Goal`;
+  } else if (needsFreeDel) {
+    targetVal = freeDelThreshold;
+    diffAmt = delDiff;
+    goalTitle = `Add <strong>₹${Math.ceil(diffAmt)}</strong> more for <strong>FREE Delivery</strong>! 🛵`;
+    goalBadge = `🛵 Delivery Goal`;
+  } else {
+    isUnlocked = true;
+    goalTitle = `🎉 <strong>Maximum Savings Unlocked!</strong> You are getting the best deal.`;
+    goalBadge = `✨ All Offers Unlocked`;
+  }
+
+  const progressPercent = isUnlocked ? 100 : Math.min(100, Math.max(8, Math.round((subtotal / targetVal) * 100)));
+
+  // Pick 3-4 Quick-Add Recommendation Chips
+  let quickAddChips = [];
+  if (!isUnlocked && diffAmt > 0) {
+    const addons = (S.adminAddons || []).filter(a => a.available);
+    if (addons.length > 0) {
+      quickAddChips = addons.slice(0, 4);
+    } else {
+      const allItems = [];
+      Object.keys(S.menu || {}).forEach(cat => {
+        (S.menu[cat] || []).forEach(it => {
+          if (it.price && it.price <= 150) allItems.push(it);
+        });
+      });
+      quickAddChips = allItems.slice(0, 4);
+    }
+  }
+
+  const quickAddHtml = quickAddChips.length > 0 ? `
+    <div class="booster-chips-row">
+      <span class="booster-chips-label">⚡ 1-Tap Add to Unlock:</span>
+      <div class="booster-chips-scroll">
+        ${quickAddChips.map(chip => `
+          <button type="button" class="booster-chip-btn" onclick="${chip.linkedItems !== undefined ? `addAddOnToCart('${chip.id}', '${chip.name.replace(/'/g, "\\'")}', ${chip.price}, '${chip.type}')` : `addToCart('${chip.id}')`}">
+            <span>+ ${chip.name}</span>
+            <strong class="chip-price">₹${chip.price}</strong>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  const boosterHtml = `
+    <div class="smart-aov-booster glass ${isUnlocked ? 'unlocked' : ''}">
+      <div class="booster-header">
+        <span class="booster-badge">${goalBadge}</span>
+        <span class="booster-text">${goalTitle}</span>
+      </div>
+      <div class="booster-progress-track">
+        <div class="booster-progress-bar" style="width: ${progressPercent}%;">
+          <span class="booster-progress-glow"></span>
+        </div>
+      </div>
+      ${quickAddHtml}
+    </div>
+  `;
+
+  if (menuContainer) menuContainer.innerHTML = boosterHtml;
+  if (cartContainer) cartContainer.innerHTML = boosterHtml;
+}
+
+// ===== MENU OFFERS DISCOVERY CAROUSEL =====
+function renderMenuOffersCarousel() {
+  const container = $('menu-offers-carousel-container');
+  if (!container) return;
+
+  const activeOffers = (S.offers || []).filter(o => o.isActive);
+  if (!activeOffers.length) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const subtotal = (S.cart || []).reduce((s, c) => s + (c.price || 0) * (c.qty || 1), 0);
+
+  let html = `
+    <div class="menu-offers-carousel-wrapper">
+      <div class="moc-header">
+        <span>🔥 Special Deals & Coupons</span>
+        <span class="moc-subtitle">Swipe to explore</span>
+      </div>
+      <div class="moc-track">
+  `;
+
+  activeOffers.forEach(o => {
+    let valueLabel = '';
+    if (o.type === 'discount_percent') valueLabel = `${o.value}% OFF`;
+    else if (o.type === 'discount_flat') valueLabel = `₹${o.value} OFF`;
+    else valueLabel = `FREE DISH`;
+
+    const isApplied = S.appliedOffer && S.appliedOffer.id === o.id;
+    const isApplicable = subtotal >= o.minOrderValue;
+    const reqMore = o.minOrderValue - subtotal;
+
+    html += `
+      <div class="moc-card ${isApplied ? 'applied' : ''}">
+        <div class="moc-badge-row">
+          <span class="moc-code">${o.code}</span>
+          <span class="moc-val">${valueLabel}</span>
+        </div>
+        <div class="moc-desc">${o.description || 'Exclusive deal on your order'}</div>
+        <div class="moc-footer">
+          <span class="moc-min">${o.minOrderValue > 0 ? `Min Order ₹${o.minOrderValue}` : 'No Min Order'}</span>
+          ${isApplied ? `
+            <button class="btn btn-secondary btn-sm moc-btn applied" onclick="removeOffer()">Applied ✓</button>
+          ` : isApplicable ? `
+            <button class="btn btn-primary btn-sm moc-btn" onclick="applyOffer('${o.id}'); navigateTo('cart');">Apply Deal</button>
+          ` : `
+            <button class="btn btn-ghost btn-sm moc-btn" style="font-size:0.7rem;" onclick="showToast('Add ₹${Math.ceil(reqMore)} more to unlock code ${o.code}', 'info')">+ Add ₹${Math.ceil(reqMore)}</button>
+          `}
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+
 function loadCartAddOns() {
   const adSec = $('cart-addons-section');
   if (!adSec) return;
@@ -631,10 +812,9 @@ function loadCartAddOns() {
   }
 
   const cartBaseIds = S.cart.map(c => (c.baseId || c.id).split('__')[0]);
-  const cartAddOnIds = S.cart.filter(c => c.isAddOn).map(c => c.id.replace('addon_', ''));
 
   const matchingAddons = S.adminAddons.filter(a => {
-    if (!a.available || cartAddOnIds.includes(a.id)) return false;
+    if (!a.available) return false;
     if (!a.linkedItems || a.linkedItems.trim() === '') return true;
     const linkedList = a.linkedItems.split(',').map(s => s.trim());
     return linkedList.some(linkId => cartBaseIds.includes(linkId));
@@ -646,20 +826,43 @@ function loadCartAddOns() {
   }
 
   adSec.innerHTML = `
-    <div class="cart-addons-wrapper glass" style="padding:14px; border:1px solid var(--border); border-radius:var(--radius); margin-bottom:16px;">
-      <h4 style="font-size:0.9rem; font-weight:700; color:var(--text1); margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-        <span>🧩 Recommended Add-Ons</span>
-      </h4>
-      <div class="cart-addons-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:10px;">
-        ${matchingAddons.map(a => `
-          <div class="cart-addon-item" style="display:flex; justify-content:space-between; align-items:center; background:var(--bg2); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--border);">
-            <div>
-              <div style="font-size:0.82rem; font-weight:600; color:var(--text1);">${a.type === 'Non-Veg' ? '🔴' : '🟢'} ${a.name}</div>
-              <div style="font-size:0.75rem; color:var(--primary); font-weight:700;">+ ₹${a.price}</div>
+    <div class="cart-addons-wrapper glass">
+      <div class="cart-addons-header">
+        <h4 style="font-size:0.92rem; font-weight:800; color:var(--text); margin:0; display:flex; align-items:center; gap:6px;">
+          <span>🧩 Complete Your Meal (Add-Ons)</span>
+        </h4>
+        <span style="font-size:0.75rem; color:var(--primary); font-weight:600;">High pairing</span>
+      </div>
+      <div class="cart-addons-grid">
+        ${matchingAddons.map(a => {
+          const cartId = 'addon_' + a.id;
+          const inCart = S.cart.find(c => c.id === cartId);
+          const qty = inCart ? inCart.qty : 0;
+          const img = a.image ? `<img src="${a.image}" alt="${a.name}">` : '<span style="font-size:1.4rem">🍛</span>';
+          
+          return `
+            <div class="cart-addon-item-card ${qty > 0 ? 'added' : ''}">
+              <div class="ca-card-left">
+                <div class="ca-card-img">${img}</div>
+                <div class="ca-card-details">
+                  <div class="ca-card-name">${a.type === 'Non-Veg' ? '🔴' : '🟢'} ${a.name}</div>
+                  <div class="ca-card-price">+ ₹${a.price}</div>
+                </div>
+              </div>
+              <div class="ca-card-right">
+                ${qty > 0 ? `
+                  <div class="qty-control ca-qty-ctrl">
+                    <button class="qty-btn" onclick="changeQty('${cartId}', -1)">−</button>
+                    <span class="qty-val">${qty}</span>
+                    <button class="qty-btn" onclick="changeQty('${cartId}', 1)">+</button>
+                  </div>
+                ` : `
+                  <button class="btn btn-primary btn-sm ca-add-btn" onclick="addAddOnToCart('${a.id}', '${a.name.replace(/'/g, "\\'")}', ${a.price}, '${a.type}')">+ Add</button>
+                `}
+              </div>
             </div>
-            <button class="btn btn-primary btn-sm" style="padding:4px 8px; font-size:0.75rem; margin:0;" onclick="addAddOnToCart('${a.id}', '${a.name.replace(/'/g, "\\'")}', ${a.price}, '${a.type}')">+ Add</button>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     </div>
   `;
@@ -700,7 +903,8 @@ function updateCartBadge(){
   const total=S.cart.reduce((s,c)=>s+c.qty,0);
   const b=$('cart-badge');b.textContent=total;
   b.classList.toggle('hidden',total===0);
-  $('cart-fab').classList.toggle('hidden',total===0||S.currentView!=='menu')
+  $('cart-fab').classList.toggle('hidden',total===0||S.currentView!=='menu');
+  renderSmartOfferProgressBar();
 }
 function clearCart(){
   if(S.revisingOrderId){
@@ -3458,9 +3662,11 @@ function startAdminRefresh() {
         return;
       }
       
-      // Filter out completed ones, keep sorting
+      const currentSheetId = (CONFIG.SPREADSHEET_ID || "default").toString().toLowerCase().trim();
+
+      // Filter out completed ones & ensure spreadsheetId matches current client
       const liveOrders = Object.values(allOrders)
-        .filter(o => o.status && o.status !== 'Completed')
+        .filter(o => o.status && o.status !== 'Completed' && (!o.spreadsheetId || o.spreadsheetId.toString().toLowerCase().trim() === currentSheetId))
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
       // Sound alert for new incoming orders
@@ -3784,12 +3990,15 @@ function renderAdminAddOns(){
     );
   }
   
-  if(!filtered.length){
-    listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><p>No matching add-ons</p></div>';
-    return;
-  }
-  
-  listEl.innerHTML=filtered.map(it=>'<div class="admin-menu-item"><div class="ami-info"><h4>'+(it.type==='Non-Veg'?'🔴':'🟢')+' '+it.name+'</h4><div class="ami-meta">₹'+it.price+' • Links: '+(it.linkedItems || 'None')+' • '+it.id+'</div></div><label class="toggle-switch"><input type="checkbox" '+(it.available?'checked':'')+' onchange="toggleAddOnAvail(\''+it.id+'\')"><span class="slider"></span></label><button class="btn btn-ghost btn-sm" onclick="showEditAddOnModal(\''+it.id+'\',\''+encodeURIComponent(JSON.stringify(it))+'\')">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="deleteAddOn(\''+it.id+'\',\''+it.name+'\')">🗑️</button></div>').join('');
+  const tipHtml = `
+    <div class="admin-aov-tip-card glass" style="padding:12px 16px; margin-bottom:14px; border:1px solid var(--primary); border-radius:var(--radius-sm); background:rgba(255,94,20,0.06); display:flex; align-items:center; gap:12px;">
+      <span style="font-size:1.5rem">💡</span>
+      <div style="font-size:0.82rem; color:var(--text); line-height:1.4;">
+        <strong>Smart AOV Booster Tip:</strong> Link add-ons (like Dips, Cold Drinks, Extra Cheese) to popular main dishes. MenuSarthi will automatically present them to customers during checkout to increase order values!
+      </div>
+    </div>
+  `;
+  listEl.innerHTML = tipHtml + filtered.map(it=>'<div class="admin-menu-item"><div class="ami-info"><h4>'+(it.type==='Non-Veg'?'🔴':'🟢')+' '+it.name+'</h4><div class="ami-meta">₹'+it.price+' • Links: '+(it.linkedItems || 'None')+' • '+it.id+'</div></div><label class="toggle-switch"><input type="checkbox" '+(it.available?'checked':'')+' onchange="toggleAddOnAvail(\''+it.id+'\')"><span class="slider"></span></label><button class="btn btn-ghost btn-sm" onclick="showEditAddOnModal(\''+it.id+'\',\''+encodeURIComponent(JSON.stringify(it))+'\')">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="deleteAddOn(\''+it.id+'\',\''+it.name+'\')">🗑️</button></div>').join('');
 }
 async function toggleAddOnAvail(id){try{await callServer('toggleAddOnAvailability',id);showToast('Updated','success')}catch(e){showToast('Failed','error')}}
 async function deleteAddOn(id,name){if(!confirm('Delete Add-On '+decodeURIComponent(name)+'?'))return;try{const r=await callServer('deleteAddOn',id);if(r.success){showToast('Deleted','success');loadAdminAddOns()}else showToast(r.message,'error')}catch(e){showToast('Failed','error')}}
@@ -5149,6 +5358,20 @@ function applyBootstrapData(d) {
   if (d.init) {
     S.config = d.init;
     if (d.init.subscriptionStatus) S.subscriptionStatus = d.init.subscriptionStatus;
+
+    // Dynamic sync of CONFIG.SPREADSHEET_ID to isolate Firebase Real-time DB per client
+    if (d.init.spreadsheetId && typeof d.init.spreadsheetId === 'string') {
+      const newSheetId = d.init.spreadsheetId.trim();
+      if (newSheetId && CONFIG.SPREADSHEET_ID !== newSheetId) {
+        console.log(`Updating CONFIG.SPREADSHEET_ID from backend: ${CONFIG.SPREADSHEET_ID} -> ${newSheetId}`);
+        CONFIG.SPREADSHEET_ID = newSheetId;
+        if (S.isAdmin && typeof FirebaseSync !== 'undefined' && FirebaseSync.initialized) {
+          FirebaseSync.loginAdmin().then(() => {
+            startAdminRefresh();
+          }).catch(e => console.error("Re-login admin failed after spreadsheetId update:", e));
+        }
+      }
+    }
   }
   
   enforceAdminSidebarRestrictions();
@@ -5233,6 +5456,8 @@ function applyBootstrapData(d) {
     const activeCatName = activeTab ? activeTab.textContent : S.categories[0];
     renderMenuItems(activeCatName);
   }
+  renderMenuOffersCarousel();
+  renderSmartOfferProgressBar();
   
   // Subscription Gate
   const sub = S.subscriptionStatus;

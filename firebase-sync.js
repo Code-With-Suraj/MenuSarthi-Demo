@@ -99,7 +99,7 @@ const FirebaseSync = {
 
   getOrdersRef() {
     if (!this.db) return null;
-    const spreadsheetId = (CONFIG.SPREADSHEET_ID || "default").toLowerCase();
+    const spreadsheetId = (CONFIG.SPREADSHEET_ID || "default").toString().toLowerCase().trim();
     return this.db.ref(`restaurants/${spreadsheetId}/orders`);
   },
 
@@ -112,16 +112,18 @@ const FirebaseSync = {
     try {
       const currentUser = firebase.auth().currentUser;
       const uid = currentUser ? currentUser.uid : null;
+      const currentSheetId = (CONFIG.SPREADSHEET_ID || "default").toString().toLowerCase().trim();
       
-      // Embed dynamic uid for Firebase security rules matching
+      // Embed dynamic uid & spreadsheetId for strict multi-tenant isolation
       const dataToSave = {
         ...orderData,
+        spreadsheetId: currentSheetId,
         uid: uid,
         lastUpdated: firebase.database.ServerValue.TIMESTAMP
       };
 
       await ordersRef.child(orderData.orderId).set(dataToSave);
-      console.log(`Order ${orderData.orderId} synced to Firebase.`);
+      console.log(`Order ${orderData.orderId} synced to Firebase (spreadsheet: ${currentSheetId}).`);
     } catch (e) {
       console.error("Error syncing order to Firebase:", e);
     }
@@ -241,15 +243,32 @@ const FirebaseSync = {
     this.stopListeningToLiveOrders();
 
     const currentUser = firebase.auth().currentUser;
+    const currentSheetId = (CONFIG.SPREADSHEET_ID || "default").toString().toLowerCase().trim();
+
     console.log("FirebaseSync: Subscribing to live orders. Current Auth state:", {
       uid: currentUser ? currentUser.uid : null,
       email: currentUser ? currentUser.email : null,
-      isAnonymous: currentUser ? currentUser.isAnonymous : null
+      spreadsheetId: currentSheetId
     });
 
     this.liveOrdersListener = ordersRef.on('value', (snapshot) => {
       const val = snapshot.val();
-      callback(val);
+      if (!val) {
+        callback(null);
+        return;
+      }
+      // Strict multi-tenant isolation: filter out any order belonging to a different spreadsheetId
+      const isolatedOrders = {};
+      Object.keys(val).forEach(key => {
+        const order = val[key];
+        if (order) {
+          const orderSheetId = (order.spreadsheetId || currentSheetId).toString().toLowerCase().trim();
+          if (orderSheetId === currentSheetId) {
+            isolatedOrders[key] = order;
+          }
+        }
+      });
+      callback(isolatedOrders);
     }, (error) => {
       console.error("Error reading live orders from Firebase:", error);
     });

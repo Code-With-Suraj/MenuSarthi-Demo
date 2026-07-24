@@ -4596,71 +4596,342 @@ h4 { font-size: 1.05rem; font-weight: 600; }
   display: none;
 }
 
-.cart-upsell-pill {
-  flex: 0 0 200px;
-  display: flex;
-  gap: 10px;
-  padding: 10px;
-  border-radius: var(--radius-sm);
-  background: var(--card);
-  border: 1px solid var(--border);
-  backdrop-filter: blur(10px);
-  transition: all 0.2s ease;
+/* ===== SMART AOV BOOSTERS & PROGRESS BAR ===== */
+.smart-aov-booster {
+  padding: 14px 16px;
+  margin: 12px 0 16px 0;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(255, 94, 20, 0.08), rgba(255, 159, 67, 0.04));
+  border: 1px solid rgba(255, 94, 20, 0.25);
+  box-shadow: 0 4px 20px rgba(255, 94, 20, 0.08);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
 }
 
-.cart-upsell-pill:hover {
-  border-color: rgba(255, 94, 20, 0.25);
-  background: rgba(255, 94, 20, 0.02);
+.smart-aov-booster.unlocked {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(52, 211, 153, 0.04));
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.1);
 }
 
-.cart-upsell-pill-img {
-  width: 50px;
-  height: 50px;
-  border-radius: var(--radius-xs);
-  background: var(--surface);
-  flex-shrink: 0;
+.booster-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 1.3rem;
-  border: 1px solid var(--border);
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 
-.cart-upsell-pill-info {
-  flex: 1;
+.booster-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--primary-gradient);
+  color: #08090c;
+}
+
+.smart-aov-booster.unlocked .booster-badge {
+  background: linear-gradient(135deg, #10b981, #34d399);
+  color: #fff;
+}
+
+.booster-text {
+  font-size: 0.84rem;
+  color: var(--text);
+  font-family: var(--font-head);
+  line-height: 1.35;
+}
+
+.booster-progress-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.booster-progress-bar {
+  height: 100%;
+  background: var(--primary-gradient);
+  border-radius: 10px;
+  transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+}
+
+.smart-aov-booster.unlocked .booster-progress-bar {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.booster-progress-glow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 15px;
+  background: #fff;
+  opacity: 0.6;
+  filter: blur(3px);
+  animation: progressGlowAnim 1.8s infinite;
+}
+
+@keyframes progressGlowAnim {
+  0% { transform: translateX(-100%); opacity: 0; }
+  50% { opacity: 0.8; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+.booster-chips-row {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.booster-chips-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text3);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.booster-chips-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.booster-chips-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.booster-chip-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.booster-chip-btn:hover {
+  background: rgba(255, 94, 20, 0.15);
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.booster-chip-btn .chip-price {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+/* ===== MENU OFFERS CAROUSEL ===== */
+.menu-offers-carousel-wrapper {
+  margin: 12px 0 16px 0;
+}
+
+.moc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-head);
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.moc-subtitle {
+  font-size: 0.72rem;
+  color: var(--text3);
+  font-weight: 500;
+}
+
+.moc-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+
+.moc-card {
+  flex: 0 0 240px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(30, 32, 42, 0.9), rgba(20, 22, 30, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
 }
 
-.cart-upsell-pill-name {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.moc-card.applied {
+  border-color: var(--success);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(10, 150, 100, 0.08));
 }
 
-.cart-upsell-pill-footer {
+.moc-badge-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 8px;
 }
 
-.cart-upsell-pill-price {
-  font-size: 0.88rem;
-  color: var(--secondary);
+.moc-code {
+  font-family: var(--font-head);
+  font-size: 0.85rem;
   font-weight: 800;
+  color: var(--primary);
+  background: rgba(255, 94, 20, 0.12);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px dashed rgba(255, 94, 20, 0.4);
+  letter-spacing: 0.5px;
 }
 
-.cart-upsell-pill-add {
-  background: transparent;
-  border: none;
+.moc-val {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.12);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.moc-desc {
+  font-size: 0.78rem;
+  color: var(--text2);
+  line-height: 1.35;
+  margin-bottom: 12px;
+}
+
+.moc-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.moc-min {
+  font-size: 0.7rem;
+  color: var(--text3);
+}
+
+.moc-btn {
+  margin-bottom: 0 !important;
+  padding: 4px 10px !important;
+  font-size: 0.72rem !important;
+}
+
+/* ===== CART ADD-ONS CARDS ===== */
+.cart-addons-wrapper {
+  padding: 16px;
+  margin-bottom: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cart-addons-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.cart-addons-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.cart-addon-item-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--card);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  transition: all 0.25s ease;
+}
+
+.cart-addon-item-card.added {
+  border-color: rgba(255, 94, 20, 0.3);
+  background: rgba(255, 94, 20, 0.04);
+}
+
+.ca-card-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ca-card-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+
+.ca-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ca-card-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.ca-card-price {
+  font-size: 0.75rem;
   color: var(--primary);
   font-weight: 800;
-  font-size: 0.78rem;
-  cursor: pointer;
+  margin-top: 2px;
+}
+
+.ca-qty-ctrl {
+  gap: 4px;
+}
+
+.ca-qty-ctrl .qty-btn {
+  width: 24px;
+  height: 24px;
+  font-size: 0.75rem;
+}
+
+.ca-qty-ctrl .qty-val {
+  font-size: 0.8rem;
+  min-width: 16px;
 }
 
 /* 3. Admin Combos & Deals Styles */
