@@ -1504,7 +1504,7 @@ async function updateDeliveryStatus(orderId, newDeliveryStatus) {
     if (r.success) {
       showToast('Delivery status updated to ' + newDeliveryStatus, 'success');
       try { FirebaseSync.updateDeliveryStatus(orderId, newDeliveryStatus); } catch (e) {}
-      loadAdminData();
+      loadAdminStats();
     } else {
       showToast(r.message || 'Failed to update delivery status', 'error');
     }
@@ -3392,26 +3392,49 @@ function isAdminSearching() {
   return false;
 }
 
-async function loadAdminData(){
-  if (isAdminSearching()) return;
+// Stats-only fetch (used when Firebase real-time is the source of truth for orders)
+async function loadAdminStats(){
   try{
-    const[orders,stats]=await Promise.all([callServer('getLiveOrders'),callServer('getOrderStats')]);
-    if(orders.success){
-      S.adminOrders = orders.data;
-      renderAdminOrders(orders.data);
-    }
+    const stats = await callServer('getOrderStats');
     if(stats.success){
       const d=stats.data;
       $('stat-total').textContent=d.totalOrders;
       $('stat-revenue').textContent='₹'+d.totalRevenue;
       $('stat-active').textContent=d.activeOrders;
       $('stat-avg').textContent='₹'+d.avgOrderValue;
-      
-      // Trigger animated updates and insights render
       renderDashboardInsights(d, S.adminOrders);
+    }
+  }catch(e){}
+}
 
-      if(orders.success&&orders.data.length>S.adminOrderCount&&S.adminOrderCount>0)try{new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH+Jj4WBfXx9gYeOkI2Jh4aIjJGUko+Nh4WGiY6UmJaSjomGhYaKkZibmpiTjYeFhYmPl5yenJiSjIiFhYqSmZ6gnpqUjoqHh4uUm6Chn5yXkY2Kio2Wnp+fnZqWkY6MjZGZnp6dnJmVkY+OkZabnZ2cm5mWlJKSlZqdnJycm5qYlpWUl5udnJycm5qZl5aWmZydnJycm5qZmJeYm52cnJybm5qZmJibnZ2dnJybm5qamZqcnZ2cnJybm5ubm5ydnZ2cnJybm5ubm5ydnZ2cnJybm5ubnJ2dnZ2cnJyb').play()}catch(e){}
-      S.adminOrderCount=orders.success?orders.data.length:0
+async function loadAdminData(){
+  if (isAdminSearching()) return;
+  try{
+    // When Firebase listener is active, it is the single source of truth for orders.
+    // Only fetch stats from GAS to avoid dual-rendering flicker.
+    const firebaseActive = typeof FirebaseSync !== 'undefined' && FirebaseSync.liveOrdersListener;
+    
+    if (firebaseActive) {
+      // Firebase handles orders — only fetch stats
+      await loadAdminStats();
+    } else {
+      // Fallback: no Firebase listener, fetch orders from GAS
+      const[orders,stats]=await Promise.all([callServer('getLiveOrders'),callServer('getOrderStats')]);
+      if(orders.success){
+        S.adminOrders = orders.data;
+        renderAdminOrders(orders.data);
+      }
+      if(stats.success){
+        const d=stats.data;
+        $('stat-total').textContent=d.totalOrders;
+        $('stat-revenue').textContent='₹'+d.totalRevenue;
+        $('stat-active').textContent=d.activeOrders;
+        $('stat-avg').textContent='₹'+d.avgOrderValue;
+        renderDashboardInsights(d, S.adminOrders);
+
+        if(orders.success&&orders.data.length>S.adminOrderCount&&S.adminOrderCount>0)try{new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH+Jj4WBfXx9gYeOkI2Jh4aIjJGUko+Nh4WGiY6UmJaSjomGhYaKkZibmpiTjYeFhYmPl5yenJiSjIiFhYqSmZ6gnpqUjoqHh4uUm6Chn5yXkY2Kio2Wnp+fnZqWkY6MjZGZnp6dnJmVkY+OkZabnZ2cm5mWlJKSlZqdnJycm5qYlpWUl5udnJycm5qZl5aWmZydnJycm5qZmJeYm52cnJybm5qZmJibnZ2dnJybm5qamZqcnZ2cnJybm5ubm5ydnZ2cnJybm5ubm5ydnZ2cnJybm5ubnJ2dnZ2cnJyb').play()}catch(e){}
+        S.adminOrderCount=orders.success?orders.data.length:0
+      }
     }
   }catch(e){showToast('Failed to load data','error')}
 }
@@ -3529,7 +3552,7 @@ async function updateDeliveryStatus(id, deliveryStatus) {
     if (r.success) {
       showToast('Delivery status updated to ' + deliveryStatus, 'success');
       try { FirebaseSync.updateDeliveryStatus(id, deliveryStatus); } catch(e) {}
-      loadAdminData();
+      loadAdminStats();
     } else {
       showToast(r.message || 'Failed to update delivery status', 'error');
     }
@@ -3586,7 +3609,7 @@ async function confirmPreparingETA(orderId, presetMinutes) {
     if (r.success) {
       showToast(r.message, 'success');
       try { FirebaseSync.updateOrderStatus(orderId, 'Preparing', minutes); } catch(e) {}
-      loadAdminData();
+      loadAdminStats();
     } else {
       showToast(r.message, 'error');
     }
@@ -3607,7 +3630,7 @@ async function refundOrder(orderId) {
     if (r.success) {
       showToast('Refund initiated successfully! 🎉', 'success');
       try { FirebaseSync.updatePaymentStatus(orderId, 'Refunded'); } catch(e) {}
-      loadAdminData();
+      loadAdminStats();
     } else {
       showToast(r.message || 'Refund failed', 'error');
     }
@@ -3623,7 +3646,7 @@ async function updateStatus(id,status,etaMinutes){
     if(r.success){
       showToast(r.message,'success');
       try { FirebaseSync.updateOrderStatus(id, status, etaMinutes); } catch(e) {}
-      loadAdminData();
+      loadAdminStats();
     }else showToast(r.message,'error')
   }catch(e){showToast('Update failed','error')}
 }
@@ -3637,7 +3660,7 @@ async function deleteAdminOrder(id){
     if(r.success){
       showToast(r.message,'success');
       try { FirebaseSync.deleteOrder(id); } catch(e) {}
-      loadAdminData();
+      loadAdminStats();
     }else{
       showToast(r.message,'error');
     }
@@ -3651,8 +3674,8 @@ function startAdminRefresh() {
   if (S.adminInterval) { clearInterval(S.adminInterval); S.adminInterval = null; }
   try { FirebaseSync.stopListeningToLiveOrders(); } catch(e) {}
   
-  // Load initially once
-  loadAdminData();
+  // Load stats initially (Firebase listener handles order rendering to avoid flicker)
+  loadAdminStats();
   
   // Subscribe to real-time updates for all live orders
   try {
