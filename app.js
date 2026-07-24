@@ -1085,9 +1085,15 @@ function renderCart(){
     '<button class="btn btn-primary btn-block" onclick="submitOrder()">🚀 Place Order — ₹'+grandTotal.toFixed(2)+'</button>';
 
   // Order mode selector pills
+  const isStarterCart = isStarterPlan();
+  if (S.orderType === 'DELIVERY' && (isStarterCart || (S.config && S.config.deliveryEnabled === false))) {
+    S.orderType = 'DINE_IN';
+  }
+
   const dineInActive = (S.orderType === 'DINE_IN' || !S.orderType) ? 'active' : '';
   const takeawayActive = S.orderType === 'TAKEAWAY' ? 'active' : '';
   const deliveryActive = S.orderType === 'DELIVERY' ? 'active' : '';
+  const deliveryDisabledAttr = (isStarterCart || (S.config && S.config.deliveryEnabled === false)) ? 'style="opacity: 0.5; cursor: not-allowed;" title="' + (isStarterCart ? '🔒 Upgrade to Growth/Premium plan for Home Delivery' : 'Disabled by restaurant') + '"' : '';
 
   const orderModePillsHtml = `
     <div class="input-group" style="margin-bottom:16px;">
@@ -1095,7 +1101,7 @@ function renderCart(){
       <div class="order-type-pills">
         <button type="button" class="order-type-pill ${dineInActive}" id="om-pill-dinein" onclick="selectOrderMode('DINE_IN')">🍽️ Dine-In</button>
         <button type="button" class="order-type-pill ${takeawayActive}" id="om-pill-takeaway" onclick="selectOrderMode('TAKEAWAY')">🛍️ Takeaway</button>
-        <button type="button" class="order-type-pill ${deliveryActive}" id="om-pill-delivery" onclick="selectOrderMode('DELIVERY')">🛵 Home Delivery</button>
+        <button type="button" class="order-type-pill ${deliveryActive}" id="om-pill-delivery" ${deliveryDisabledAttr} onclick="selectOrderMode('DELIVERY')">🛵 Home Delivery ${isStarterCart ? '🔒' : ''}</button>
       </div>
     </div>
   `;
@@ -1155,8 +1161,24 @@ function renderCart(){
   cs.innerHTML='<div class="cart-summary"><div class="row"><span>Subtotal ('+itemCount+')</span><span>₹'+subtotal+'</span></div>'+discountLine+gstLine+deliveryFeeLine+'<div class="row total"><span>Total</span><span>₹'+grandTotal.toFixed(2)+'</span></div>'+gstinLine+'</div>' + offersHtml + '<div class="checkout-section">' + orderModePillsHtml + fulfillmentFieldsHtml + '<div class="input-group"><label>Special Instructions (optional)</label><textarea id="checkout-notes" placeholder="e.g. Extra spicy, no onions...">'+notesValue+'</textarea></div>'+submitBtn+'</div>';
 }
 
+function isStarterPlan() {
+  return !!(S.subscriptionStatus && S.subscriptionStatus.isActive && S.subscriptionStatus.plan && S.subscriptionStatus.plan.toLowerCase().includes('starter'));
+}
+
 // ===== DELIVERY & ADDRESS MANAGEMENT =====
 function selectOrderMode(mode) {
+  const isStarter = isStarterPlan();
+  if (mode === 'DELIVERY') {
+    if (isStarter) {
+      showToast('Home Delivery is not available on the Starter plan (₹499). Please upgrade to Growth or Premium plan.', 'warning');
+      return;
+    }
+    if (S.config && S.config.deliveryEnabled === false) {
+      showToast('Home delivery is currently disabled by the restaurant.', 'info');
+      return;
+    }
+  }
+
   S.orderType = mode;
 
   // Update Landing page cards
@@ -3863,13 +3885,18 @@ async function loadAdminSettings(){
       if ($('cfg-delivery-fee')) $('cfg-delivery-fee').value = d.flatDeliveryFee !== undefined ? d.flatDeliveryFee : 40;
       if ($('cfg-free-delivery-threshold')) $('cfg-free-delivery-threshold').value = d.freeDeliveryThreshold !== undefined ? d.freeDeliveryThreshold : 500;
 
-      const isStarter = S.subscriptionStatus && S.subscriptionStatus.isActive && S.subscriptionStatus.plan && S.subscriptionStatus.plan.toLowerCase().includes('starter');
+      const isStarter = isStarterPlan();
       
       const rzpCheckbox = $('cfg-razorpay-enabled');
       const rzpKeyId = $('cfg-razorpay-key-id');
       const rzpKeySecret = $('cfg-razorpay-key-secret');
       const toggleRow = rzpCheckbox ? rzpCheckbox.closest('.gst-toggle-row') : null;
-      
+
+      const delCheckbox = $('cfg-delivery-enabled');
+      const delFeeInput = $('cfg-delivery-fee');
+      const delThreshInput = $('cfg-free-delivery-threshold');
+      const delToggleRow = delCheckbox ? delCheckbox.closest('.gst-toggle-row') : null;
+
       if (isStarter) {
         if (rzpCheckbox) {
           rzpCheckbox.checked = false;
@@ -3896,6 +3923,26 @@ async function loadAdminSettings(){
           badge.innerHTML = '🔒 Upgrade to Growth/Premium to unlock';
           toggleRow.insertBefore(badge, toggleRow.querySelector('.toggle-switch'));
         }
+
+        if (delCheckbox) {
+          delCheckbox.checked = false;
+          delCheckbox.disabled = true;
+        }
+        if (delFeeInput) delFeeInput.disabled = true;
+        if (delThreshInput) delThreshInput.disabled = true;
+
+        if (delToggleRow && !document.getElementById('del-locked-badge')) {
+          const badge = document.createElement('span');
+          badge.id = 'del-locked-badge';
+          badge.style.color = '#fa5252';
+          badge.style.fontSize = '0.75rem';
+          badge.style.fontWeight = 'bold';
+          badge.style.marginLeft = '8px';
+          badge.style.flex = '1';
+          badge.style.textAlign = 'right';
+          badge.innerHTML = '🔒 Upgrade to Growth/Premium to unlock';
+          delToggleRow.insertBefore(badge, delToggleRow.querySelector('.toggle-switch'));
+        }
       } else {
         if (rzpCheckbox) rzpCheckbox.disabled = false;
         if (rzpKeyId) rzpKeyId.disabled = false;
@@ -3903,6 +3950,13 @@ async function loadAdminSettings(){
         
         const badge = document.getElementById('rzp-locked-badge');
         if (badge) badge.remove();
+
+        if (delCheckbox) delCheckbox.disabled = false;
+        if (delFeeInput) delFeeInput.disabled = false;
+        if (delThreshInput) delThreshInput.disabled = false;
+
+        const delBadge = document.getElementById('del-locked-badge');
+        if (delBadge) delBadge.remove();
         
         if (rzpCheckbox) rzpCheckbox.checked = d.razorpayEnabled === true;
         if (rzpKeyId) rzpKeyId.value = d.razorpayKeyId || '';
@@ -4881,10 +4935,10 @@ function getPlanFeaturesHTML(planId) {
     return `
       <ul class="plan-features-list">
         <li><span class="feat-icon feat-yes">✅</span> QR Menu</li>
-        <li><span class="feat-icon feat-yes">✅</span> Unlimited Menu</li>
-        <li><span class="feat-icon feat-yes">✅</span> Unlimited Scan</li>
-        <li><span class="feat-icon feat-yes">✅</span> Basic Ordering</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Menu & Scans</li>
+        <li><span class="feat-icon feat-yes">✅</span> Dine-In & Takeaway</li>
         <li><span class="feat-icon feat-yes">✅</span> Live Order Tracking</li>
+        <li><span class="feat-icon feat-no">❌</span> No Home Delivery</li>
         <li><span class="feat-icon feat-no">❌</span> No Addons</li>
         <li><span class="feat-icon feat-no">❌</span> No Combo</li>
         <li><span class="feat-icon feat-no">❌</span> No upselling</li>
@@ -4895,20 +4949,17 @@ function getPlanFeaturesHTML(planId) {
     return `
       <ul class="plan-features-list">
         <li><span class="feat-icon feat-yes">✅</span> QR Menu</li>
-        <li><span class="feat-icon feat-yes">✅</span> Unlimited Menu</li>
-        <li><span class="feat-icon feat-yes">✅</span> Unlimited Scan</li>
-        <li><span class="feat-icon feat-yes">✅</span> Basic Ordering</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Menu & Scans</li>
+        <li><span class="feat-icon feat-yes">✅</span> Dine-In & Takeaway</li>
         <li><span class="feat-icon feat-yes">✅</span> Live Order Tracking</li>
+        <li><span class="feat-icon feat-yes">✅</span> Home Delivery Module 🛵</li>
         <li><span class="feat-icon feat-yes">✅</span> Restaurant Website</li>
         <li><span class="feat-icon feat-yes">✅</span> Analytics Dashboard</li>
         <li><span class="feat-icon feat-yes">✅</span> Customer Database</li>
         <li><span class="feat-icon feat-yes">✅</span> Table Ordering</li>
         <li><span class="feat-icon feat-yes">✅</span> Payment Integration</li>
         <li><span class="feat-icon feat-yes">✅</span> Unlimited Orders</li>
-        <li><span class="feat-icon feat-yes">✅</span> Addons</li>
-        <li><span class="feat-icon feat-yes">✅</span> Combo</li>
-        <li><span class="feat-icon feat-yes">✅</span> Upselling</li>
-        <li><span class="feat-icon feat-yes">✅</span> Offers</li>
+        <li><span class="feat-icon feat-yes">✅</span> Addons, Combo & Offers</li>
         <li><span class="feat-icon feat-no">❌</span> No Custom Domain</li>
       </ul>
     `;
@@ -4916,20 +4967,17 @@ function getPlanFeaturesHTML(planId) {
     return `
       <ul class="plan-features-list">
         <li><span class="feat-icon feat-yes">✅</span> QR Menu</li>
-        <li><span class="feat-icon feat-yes">✅</span> Unlimited Menu</li>
-        <li><span class="feat-icon feat-yes">✅</span> Unlimited Scan</li>
-        <li><span class="feat-icon feat-yes">✅</span> Basic Ordering</li>
+        <li><span class="feat-icon feat-yes">✅</span> Unlimited Menu & Scans</li>
+        <li><span class="feat-icon feat-yes">✅</span> Dine-In & Takeaway</li>
         <li><span class="feat-icon feat-yes">✅</span> Live Order Tracking</li>
+        <li><span class="feat-icon feat-yes">✅</span> Home Delivery Module 🛵</li>
         <li><span class="feat-icon feat-yes">✅</span> Restaurant Website</li>
         <li><span class="feat-icon feat-yes">✅</span> Analytics Dashboard</li>
         <li><span class="feat-icon feat-yes">✅</span> Customer Database</li>
         <li><span class="feat-icon feat-yes">✅</span> Table Ordering</li>
         <li><span class="feat-icon feat-yes">✅</span> Payment Integration</li>
         <li><span class="feat-icon feat-yes">✅</span> Unlimited Orders</li>
-        <li><span class="feat-icon feat-yes">✅</span> Addons</li>
-        <li><span class="feat-icon feat-yes">✅</span> Combo</li>
-        <li><span class="feat-icon feat-yes">✅</span> Upselling</li>
-        <li><span class="feat-icon feat-yes">✅</span> Offers</li>
+        <li><span class="feat-icon feat-yes">✅</span> Addons, Combo & Offers</li>
         <li><span class="feat-icon feat-yes">✅</span> Custom Domain</li>
       </ul>
     `;
